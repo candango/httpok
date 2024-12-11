@@ -1,6 +1,7 @@
 # Candango HttpOK
 
-Welcome to the world of httpok, your Go library for extending the capabilities of the standard net/http package!
+Welcome to the world of httpok, your Go library for extending the capabilities
+of the standard net/http package!
 
 # Installation
 To get httpok, you can use go get:
