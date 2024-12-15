@@ -64,7 +64,7 @@ type GracefulServer struct {
 // signals to gracefully shut down.
 // It takes optional signals to listen for; if none are provided, it uses
 // default signals.
-func (s *GracefulServer) Run(sig ...os.Signal) {
+func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
 	logger := s.RunLogger
 	if logger == nil {
 		logger = &basicLogger{}
@@ -75,27 +75,32 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 			logger.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
 		}
 	}()
-
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	logger.Printf("server %s running at %s", s.Name, s.Addr)
-
+	logger.Printf("server %s started at %s", s.Name, s.Addr)
 	c := newSignalChan(sig...)
+	go func() {
+		defer func() {
+			signal.Stop(c)
+			cancel()
+		}()
 
-	defer func() {
-		signal.Stop(c)
+		select {
+		case sig := <-c:
+			logger.Printf("shutting down %s due to signal %s", s.Name, sig)
+		case <-ctx.Done():
+			logger.Printf("shutting down %s", s.Name)
+		}
+
+		if err := s.Shutdown(ctx); err != nil {
+			logger.Fatalf("Server %s shutdown failed: %v", s.Name, err)
+		}
+
 		logger.Printf("%s shutdown gracefully", s.Name)
-		cancel()
 	}()
 
-	select {
-	case sig := <-c:
-		logger.Printf("shutting down %s due to signal %s", s.Name, sig)
-		cancel()
-	case <-ctx.Done():
-		logger.Printf("shutting down %s", s.Name)
-	}
+	return c
 }
 
 // basicLogger implements the RunLogger interface using Go's standard log

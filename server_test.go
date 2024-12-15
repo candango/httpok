@@ -21,13 +21,29 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func isPortInUse(port int) (bool, error) {
+	// Try to listen on the specified port
+	ln, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+
+	if err != nil {
+		// If there's an error, check if it's because the port is already in use
+		if opErr, ok := err.(*net.OpError); ok && opErr.Op == "listen" {
+			return true, nil
+		}
+		// Return the error if it's something else
+		return false, err
+	}
+	// If we can listen, the port is not in use, so close the listener
+	ln.Close()
+	return false, nil
+}
 
 // Helper function to get a free port
 func getFreePort() (int, error) {
@@ -69,11 +85,17 @@ func TestGracefulServer(t *testing.T) {
 		Context: context.Background(),
 	}
 
+	var c chan os.Signal
 	go func() {
-		gs.Run()
+		c = gs.Run()
 	}()
 
 	time.Sleep(1 * time.Second)
+	ok, err := isPortInUse(port)
+	if err != nil {
+		t.Fatalf("failed to check port in use: %v", err)
+	}
+	assert.True(t, ok)
 
 	resp, err := http.Get("http://localhost" + addr)
 	if err != nil {
@@ -83,8 +105,17 @@ func TestGracefulServer(t *testing.T) {
 	resp.Body.Close()
 
 	// Send SIGTERM down the pipe
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGTERM)
-	defer signal.Stop(c)
 	c <- syscall.SIGTERM
+	time.Sleep(1 * time.Second)
+
+	resp, err = http.Get("http://localhost" + addr)
+	if err != nil {
+		assert.Error(t, err)
+	}
+
+	ok, err = isPortInUse(port)
+	if err != nil {
+		t.Fatalf("failed to check port in use: %v", err)
+	}
+	assert.False(t, ok)
 }
