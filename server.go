@@ -79,7 +79,7 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	log.Printf("server %s running at %s", s.Name, s.Addr)
+	logger.Printf("server %s running at %s", s.Name, s.Addr)
 
 	c := newSignalChan(sig...)
 
