@@ -19,41 +19,114 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/candango/httpok/util"
 	"github.com/stretchr/testify/assert"
 )
 
+func chFileTime(name string, mTime time.Time) error {
+	err := os.Chtimes(name, mTime, mTime)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 // TODO: We need to keep building the session engine tests
 func TestSessionServer(t *testing.T) {
-	engine := NewFileEngine()
-	err := engine.Start()
-	if err != nil {
-		t.Error(err)
-	}
-
-	sess := util.RandomString(16)
-
-	err = engine.Store(sess, map[string]interface{}{
-		"key": "value",
-	})
-	if err != nil {
-		t.Error(err)
-	}
-	var sessData map[string]interface{}
-
-	err = engine.Read(sess, &sessData)
-	if err != nil {
-		t.Error(err)
-	}
-
-	assert.Equal(t, "value", sessData["key"])
-	defer func() {
-		sessFile := filepath.Join(engine.Dir, fmt.Sprintf("%s.sess", sess))
-		err := os.Remove(sessFile)
+	t.Run("Session store/read with json encoder", func(t *testing.T) {
+		engine := NewFileEngine()
+		err := engine.Start()
 		if err != nil {
 			t.Error(err)
 		}
 
-	}()
+		sess := util.RandomString(64)
+
+		err = engine.Store(sess, map[string]interface{}{
+			"key": "value",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+		var sessData map[string]interface{}
+
+		err = engine.Read(sess, &sessData)
+		if err != nil {
+			t.Error(err)
+		}
+
+		assert.Equal(t, "value", sessData["key"])
+		defer func() {
+			sessFile := filepath.Join(engine.Dir, fmt.Sprintf("%s.sess", sess))
+			err := os.Remove(sessFile)
+			if err != nil {
+				t.Error(err)
+			}
+
+		}()
+	})
+
+	t.Run("Session purge", func(t *testing.T) {
+		engine := NewFileEngine()
+		err := engine.Start()
+		if err != nil {
+			t.Error(err)
+		}
+
+		sess1 := util.RandomString(64)
+		file1 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess1))
+		sess2 := util.RandomString(64)
+		file2 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess2))
+		sess3 := util.RandomString(64)
+		file3 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess3))
+
+		err = engine.Store(sess1, map[string]interface{}{
+			"key": "value",
+		})
+		assert.True(t, fileExists(file1))
+		err = engine.Store(sess2, map[string]interface{}{
+			"key": "value",
+		})
+		assert.True(t, fileExists(file2))
+		err = engine.Store(sess3, map[string]interface{}{
+			"key": "value",
+		})
+		assert.True(t, fileExists(file3))
+		if err != nil {
+			t.Error(err)
+		}
+
+		oldTime := time.Date(2023, time.October, 1, 12, 0, 0, 0, time.UTC)
+		err = chFileTime(file1, oldTime)
+		if err != nil {
+			t.Error(err)
+		}
+		err = chFileTime(file2, oldTime)
+		if err != nil {
+			t.Error(err)
+		}
+
+		engine.Purge()
+
+		assert.False(t, fileExists(file1))
+		assert.False(t, fileExists(file2))
+		assert.True(t, fileExists(file3))
+
+		err = chFileTime(file3, oldTime)
+		if err != nil {
+			t.Error(err)
+		}
+		engine.Purge()
+		assert.False(t, fileExists(file3))
+	})
 }

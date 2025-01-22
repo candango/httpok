@@ -14,10 +14,12 @@ type Engine interface {
 	Start() error
 	Stop() error
 	Store(string, any) error
+	Purge() error
 }
 
 type FileEngine struct {
-	Dir string
+	AgeLimit time.Duration
+	Dir      string
 	Encoder
 	PurgeDuration time.Duration
 }
@@ -25,6 +27,7 @@ type FileEngine struct {
 func NewFileEngine() *FileEngine {
 	dir := filepath.Join(os.TempDir(), "httpok", "sess")
 	return &FileEngine{
+		AgeLimit:      30 * time.Minute,
 		Dir:           dir,
 		Encoder:       &JsonEncoder{},
 		PurgeDuration: 2 * time.Minute,
@@ -42,10 +45,10 @@ func (e *FileEngine) Read(sess string, v any) error {
 
 	buffer := make([]byte, 1024)
 	n, err := file.Read(buffer)
-
 	if err != nil {
 		return err
 	}
+
 	err = e.Encoder.Decode(buffer[:n], v)
 	if err != nil {
 		return err
@@ -78,6 +81,7 @@ func (e *FileEngine) Start() error {
 				"create the sesssion dir", e.Dir),
 		)
 	}
+	// TODO: start purge rotine
 
 	return nil
 }
@@ -99,6 +103,31 @@ func (e *FileEngine) Store(sess string, v any) error {
 	_, err = file.Write(data)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (e *FileEngine) Purge() error {
+
+	files, err := os.ReadDir(e.Dir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		info, err := file.Info()
+		if err != nil {
+			return err
+		}
+		filePath := filepath.Join(e.Dir, file.Name())
+		age := time.Now().Sub(info.ModTime())
+		if age > e.AgeLimit {
+			err := os.Remove(filePath)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
