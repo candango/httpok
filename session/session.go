@@ -14,8 +14,6 @@ type Engine interface {
 	Start() error
 	Stop() error
 	Store(string, any) error
-	Encode() error
-	Decode() error
 }
 
 type FileEngine struct {
@@ -103,14 +101,6 @@ func (e *FileEngine) Store(sess string, v any) error {
 		return err
 	}
 
-	return nil
-}
-
-func (e *FileEngine) Encode() error {
-	return nil
-}
-
-func (e *FileEngine) Decode() error {
 	return nil
 }
 
