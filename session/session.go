@@ -10,6 +10,10 @@ import (
 )
 
 type Engine interface {
+	Enabled() bool
+	SetEnabled(enabled bool)
+	GetSession(id string) *Session
+	// TODO: PurgeSession(id string)
 	Read(string, any) error
 	Start() error
 	Stop() error
@@ -20,6 +24,7 @@ type Engine interface {
 type FileEngine struct {
 	AgeLimit time.Duration
 	Dir      string
+	enabled  bool
 	Encoder
 	PurgeDuration time.Duration
 }
@@ -29,9 +34,25 @@ func NewFileEngine() *FileEngine {
 	return &FileEngine{
 		AgeLimit:      30 * time.Minute,
 		Dir:           dir,
+		enabled:       true,
 		Encoder:       &JsonEncoder{},
 		PurgeDuration: 2 * time.Minute,
 	}
+}
+
+func (e *FileEngine) Enabled() bool {
+	return e.enabled
+}
+
+func (e *FileEngine) SetEnabled(enabled bool) {
+	e.enabled = enabled
+}
+
+func (e *FileEngine) GetSession(id string) *Session {
+	if e.Enabled() {
+		return nil
+	}
+	return nil
 }
 
 func (e *FileEngine) Read(sess string, v any) error {
@@ -147,4 +168,66 @@ func (e *JsonEncoder) Encode(v any) ([]byte, error) {
 
 func (e *JsonEncoder) Decode(data []byte, v any) error {
 	return json.Unmarshal(data, v)
+}
+
+var sessionDestroyedError error = errors.New("the session is already " +
+	"destroyed, renew the session before using it")
+
+type Session struct {
+	Id        string
+	Changed   bool
+	Data      map[string]any
+	Destroyed bool
+	Params    any
+}
+
+func (s *Session) Clear() {
+	s.Data = map[string]any{}
+	s.Changed = true
+}
+
+func (s *Session) Delete(key string) error {
+	if s.Destroyed {
+		return sessionDestroyedError
+	}
+	_, ok := s.Data[key]
+	if ok {
+		delete(s.Data, key)
+	}
+	s.Changed = true
+	return nil
+}
+
+func (s *Session) Destroy() {
+	s.Clear()
+	s.Destroyed = true
+	// TODO: after destroyed we need to store the session
+}
+
+func (s *Session) Get(key string) (any, error) {
+	if s.Destroyed {
+		return nil, sessionDestroyedError
+	}
+	data, ok := s.Data[key]
+	if !ok {
+		return nil, nil
+	}
+	return data, nil
+}
+
+func (s *Session) Has(key string) (bool, error) {
+	if s.Destroyed {
+		return false, sessionDestroyedError
+	}
+	_, ok := s.Data[key]
+	return ok, nil
+}
+
+func (s *Session) Set(key string, value any) error {
+	if s.Destroyed {
+		return sessionDestroyedError
+	}
+	s.Data[key] = value
+	s.Changed = true
+	return nil
 }
