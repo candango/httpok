@@ -15,7 +15,6 @@
 package httpok
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
@@ -80,11 +79,7 @@ func TestGracefulServer(t *testing.T) {
 	}
 
 	// Create GracefulServer with our custom server
-	gs := &GracefulServer{
-		Server:  srv,
-		Context: context.Background(),
-	}
-
+	gs := NewGracefulServer(srv)
 	var c chan os.Signal
 	go func() {
 		c = gs.Run()

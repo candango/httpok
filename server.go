@@ -16,21 +16,14 @@ package httpok
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-)
 
-// RunLogger defines the interface for logging used within the GracefulServer's
-// Run method.
-// It provides methods for formatted printing and fatal errors which halt the
-// program.
-type RunLogger interface {
-	Printf(format string, v ...interface{})
-	Fatalf(format string, v ...interface{})
-}
+	"github.com/candango/httpok/logger"
+	"github.com/candango/httpok/session"
+)
 
 // newSignalChan creates a channel that listens for specified signals or
 // default signals if none are provided.
@@ -57,7 +50,16 @@ type GracefulServer struct {
 	Name string
 	*http.Server
 	context.Context
-	RunLogger
+	logger.Logger
+	SessionEngine session.Engine
+}
+
+func NewGracefulServer(s *http.Server) *GracefulServer {
+	gs := &GracefulServer{
+		Server:  s,
+		Context: context.Background(),
+	}
+	return gs
 }
 
 // Run starts the HTTP server in a goroutine and listens for termination
@@ -65,20 +67,20 @@ type GracefulServer struct {
 // It takes optional signals to listen for; if none are provided, it uses
 // default signals.
 func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
-	logger := s.RunLogger
-	if logger == nil {
-		logger = &basicLogger{}
+	l := s.Logger
+	if l == nil {
+		l = &logger.StandardLogger{}
 	}
 
 	go func() {
 		if err := s.ListenAndServe(); err != http.ErrServerClosed {
-			logger.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
+			l.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
 		}
 	}()
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	logger.Printf("server %s started at %s", s.Name, s.Addr)
+	l.Printf("server %s started at %s", s.Name, s.Addr)
 	c := newSignalChan(sig...)
 	go func() {
 		defer func() {
@@ -88,33 +90,17 @@ func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
 
 		select {
 		case sig := <-c:
-			logger.Printf("shutting down %s due to signal %s", s.Name, sig)
+			l.Printf("shutting down %s due to signal %s", s.Name, sig)
 		case <-ctx.Done():
-			logger.Printf("shutting down %s", s.Name)
+			l.Printf("shutting down %s", s.Name)
 		}
 
 		if err := s.Shutdown(ctx); err != nil {
-			logger.Fatalf("Server %s shutdown failed: %v", s.Name, err)
+			l.Fatalf("Server %s shutdown failed: %v", s.Name, err)
 		}
 
-		logger.Printf("%s shutdown gracefully", s.Name)
+		l.Printf("%s shutdown gracefully", s.Name)
 	}()
 
 	return c
-}
-
-// basicLogger implements the RunLogger interface using Go's standard log
-// package.
-type basicLogger struct{}
-
-// Printf logs a formatted message using the standard log package's Printf
-// method.
-func (l *basicLogger) Printf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
-
-// Fatalf logs a formatted message and then terminates the program using the
-// standard log package's Fatalf method.
-func (l *basicLogger) Fatalf(format string, v ...interface{}) {
-	log.Fatalf(format, v...)
 }

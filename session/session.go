@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/candango/httpok/logger"
 )
 
 type Engine interface {
@@ -26,6 +28,7 @@ type FileEngine struct {
 	Dir      string
 	enabled  bool
 	Encoder
+	logger.Logger
 	PurgeDuration time.Duration
 }
 
