@@ -36,7 +36,6 @@ func newSignalChan(sig ...os.Signal) chan os.Signal {
 			syscall.SIGHUP,
 			syscall.SIGQUIT,
 			syscall.SIGTERM,
-			syscall.SIGKILL,
 		}
 	}
 	c := make(chan os.Signal, 1)
@@ -73,12 +72,12 @@ func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
 	}
 
 	go func() {
-		if err := s.ListenAndServe(); err != http.ErrServerClosed {
+		err := s.ListenAndServe()
+		if err != http.ErrServerClosed {
 			l.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
 		}
 	}()
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(s.Context)
 
 	l.Printf("server %s started at %s", s.Name, s.Addr)
 	c := newSignalChan(sig...)
