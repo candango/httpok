@@ -15,6 +15,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,19 +34,11 @@ func chFileTime(name string, mTime time.Time) error {
 	return nil
 }
 
-func fileExists(name string) bool {
-	_, err := os.Stat(name)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-	return true
-}
-
 // TODO: We need to keep building the session engine tests
 func TestSessionServer(t *testing.T) {
 	t.Run("Session store/read with json encoder", func(t *testing.T) {
 		engine := NewFileEngine()
-		err := engine.Start()
+		err := engine.Start(context.Background())
 		if err != nil {
 			t.Error(err)
 		}
@@ -78,7 +71,7 @@ func TestSessionServer(t *testing.T) {
 
 	t.Run("Session purge", func(t *testing.T) {
 		engine := NewFileEngine()
-		err := engine.Start()
+		err := engine.Start(context.Background())
 		if err != nil {
 			t.Error(err)
 		}
