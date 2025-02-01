@@ -14,8 +14,7 @@ go get github.com/candango/httpok
 
 HttpOK is one of
 [Candango Open Source Group](http://www.candango.org/projects/)
-initiatives. Available under the
-[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
+initiatives. Available under the [MIT License](https://mit-license.org).
 
 This site and all documentation are licensed under
 [Creative Commons 3.0](http://creativecommons.org/licenses/by/3.0/).
