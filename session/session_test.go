@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/candango/httpok/util"
+	"github.com/candango/httpok/security"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -43,7 +43,7 @@ func TestSessionServer(t *testing.T) {
 			t.Error(err)
 		}
 
-		sess := util.RandomString(64)
+		sess := security.RandomString(64)
 
 		err = engine.Store(sess, map[string]interface{}{
 			"key": "value",
@@ -76,11 +76,11 @@ func TestSessionServer(t *testing.T) {
 			t.Error(err)
 		}
 
-		sess1 := util.RandomString(64)
+		sess1 := security.RandomString(64)
 		file1 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess1))
-		sess2 := util.RandomString(64)
+		sess2 := security.RandomString(64)
 		file2 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess2))
-		sess3 := util.RandomString(64)
+		sess3 := security.RandomString(64)
 		file3 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess3))
 
 		err = engine.Store(sess1, map[string]interface{}{

@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/candango/httpok/util"
+	"github.com/candango/httpok/security"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,7 +39,7 @@ func (e *RedisEngine) SetEnabled(enabled bool) {
 }
 
 func (e *RedisEngine) NewId() string {
-	return util.RandomString(64)
+	return security.RandomString(64)
 }
 
 func (e *RedisEngine) GetSession(id string, ctx context.Context) (Session, error) {

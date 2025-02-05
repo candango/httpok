@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/candango/httpok/logger"
-	"github.com/candango/httpok/util"
+	"github.com/candango/httpok/security"
 )
 
 const (
@@ -97,7 +97,7 @@ func (e *FileEngine) SetEnabled(enabled bool) {
 }
 
 func (e *FileEngine) NewId() string {
-	return util.RandomString(64)
+	return security.RandomString(64)
 }
 
 func (e *FileEngine) GetSession(id string, ctx context.Context) (Session, error) {
