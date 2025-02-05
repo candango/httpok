@@ -7,17 +7,26 @@ import "log"
 // program, ensuring consistent logging behavior across all components of
 // httpok.
 type Logger interface {
-	Printf(format string, v ...interface{})
+	Infof(format string, v ...interface{})
+	Errorf(format string, v ...interface{})
 	Fatalf(format string, v ...interface{})
+	Printf(format string, v ...interface{})
+	Warnf(format string, v ...interface{})
 }
 
 // basicRunLogger implements the RunLogger interface using Go's standard log
 // package.
 type StandardLogger struct{}
 
-// Printf logs a formatted message using the standard log package's Printf
+// Infof logs a formatted message using the standard log package's Printf
 // method.
-func (l *StandardLogger) Printf(format string, v ...interface{}) {
+func (l *StandardLogger) Infof(format string, v ...interface{}) {
+	log.Printf(format, v...)
+}
+
+// Errorf logs a formatted message using the standard log package's Printf
+// method.
+func (l *StandardLogger) Errorf(format string, v ...interface{}) {
 	log.Printf(format, v...)
 }
 
@@ -25,4 +34,16 @@ func (l *StandardLogger) Printf(format string, v ...interface{}) {
 // standard log package's Fatalf method.
 func (l *StandardLogger) Fatalf(format string, v ...interface{}) {
 	log.Fatalf(format, v...)
+}
+
+// Printf logs a formatted message using the standard log package's Printf
+// method.
+func (l *StandardLogger) Printf(format string, v ...interface{}) {
+	log.Printf(format, v...)
+}
+
+// Warnf logs a formatted message using the standard log package's Printf
+// method.
+func (l *StandardLogger) Warnf(format string, v ...interface{}) {
+	log.Printf(format, v...)
 }
