@@ -9,6 +9,8 @@ import (
 	"github.com/candango/httpok/session"
 )
 
+// newCookie creates and returns a new HTTP cookie with the specified
+// parameters.
 func newCookie(name string, value string, age time.Duration) *http.Cookie {
 	return &http.Cookie{
 		Name:     name,
@@ -21,6 +23,11 @@ func newCookie(name string, value string, age time.Duration) *http.Cookie {
 	}
 }
 
+// Sessioned returns a middleware that manages session cookies using the
+// provided session Engine.
+// It checks for existing cookies, creates new ones if necessary, and
+// associates session data with
+// the request context before passing it to the next handler.
 func Sessioned(e session.Engine) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

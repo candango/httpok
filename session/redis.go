@@ -10,12 +10,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// RedisEngine is the implementation of session management using Redis.
 type RedisEngine struct {
 	EngineProperties
 	ctx context.Context
 	rdb *redis.Client
 }
 
+// NewRedisEngine creates and returns a new RedisEngine with default settings.
 func NewRedisEngine() (*RedisEngine, error) {
 
 	return &RedisEngine{
@@ -30,18 +32,22 @@ func NewRedisEngine() (*RedisEngine, error) {
 	}, nil
 }
 
+// Enabled returns whether the session management is enabled.
 func (e *RedisEngine) Enabled() bool {
 	return e.enabled
 }
 
+// SetEnabled sets the enabled status of the session management.
 func (e *RedisEngine) SetEnabled(enabled bool) {
 	e.enabled = enabled
 }
 
+// NewId generates and returns a new session ID.
 func (e *RedisEngine) NewId() string {
 	return security.RandomString(64)
 }
 
+// GetSession retrieves a session from Redis based on the given ID.
 func (e *RedisEngine) GetSession(id string, ctx context.Context) (Session, error) {
 	if e.Enabled() && id != "" {
 		var v map[string]any
@@ -74,13 +80,14 @@ func (e *RedisEngine) GetSession(id string, ctx context.Context) (Session, error
 	return Session{}, nil
 }
 
+// SessionNotExists checks if a session with the given ID does not exist in
+// Redis.
 func (e *RedisEngine) SessionNotExists(id string) (bool, error) {
 	key := fmt.Sprintf("%s:%s", e.Prefix, id)
 	log.Println(key)
 	keys, err := e.rdb.Keys(e.ctx, key).Result()
-	// FIXME: SessionNotExists MUST return an error also
 	if err != nil {
-		return true, err //  <---- Bhruuuu
+		return true, err
 	}
 
 	if len(keys) > 0 {
@@ -89,6 +96,7 @@ func (e *RedisEngine) SessionNotExists(id string) (bool, error) {
 	return true, nil
 }
 
+// StoreSession saves the session data back to Redis.
 func (e *RedisEngine) StoreSession(id string, s Session) error {
 	if e.Enabled() && id != "" {
 		err := e.Store(id, s.Data)
@@ -100,14 +108,17 @@ func (e *RedisEngine) StoreSession(id string, s Session) error {
 	return nil
 }
 
+// Name returns the name of the session engine.
 func (e *RedisEngine) Name() string {
 	return e.name
 }
 
+// SetName sets the name of the session engine.
 func (e *RedisEngine) SetName(n string) {
 	e.name = n
 }
 
+// Read retrieves and decodes session data from Redis.
 func (e *RedisEngine) Read(id string, v any) error {
 	key := fmt.Sprintf("%s:%s", e.Prefix, id)
 	val, err := e.rdb.Get(e.ctx, key).Result()
@@ -128,6 +139,7 @@ func (e *RedisEngine) Read(id string, v any) error {
 	return nil
 }
 
+// Start initializes the connection to Redis.
 func (e *RedisEngine) Start(ctx context.Context) error {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
@@ -145,10 +157,13 @@ func (e *RedisEngine) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop is a placeholder for stopping the session engine, currently does
+// nothing.
 func (e *RedisEngine) Stop() error {
 	return nil
 }
 
+// Store saves session data to Redis.
 func (e *RedisEngine) Store(id string, v any) error {
 	sessKey := fmt.Sprintf("%s:%s", e.Prefix, id)
 	data, err := e.Encoder.Encode(v)
@@ -162,6 +177,7 @@ func (e *RedisEngine) Store(id string, v any) error {
 	return nil
 }
 
+// Purge removes expired sessions from Redis.
 func (e *RedisEngine) Purge() error {
 	keys, err := e.rdb.Keys(e.ctx, fmt.Sprintf("%s:*", e.Prefix)).Result()
 	if err != nil {
