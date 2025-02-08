@@ -14,29 +14,29 @@ type bufferedLogger struct {
 	t *testing.T
 }
 
-func (l *bufferedLogger) Infof(_ string, v ...interface{}) {
+func (l *bufferedLogger) Infof(_ string, v ...any) {
 	line := fmt.Sprintf("%s %d %s", []any{v[1], v[2], v[3]}...)
 	fmt.Fprintf(l, "info: %s ", line)
 	fmt.Fprintln(l)
 }
 
-func (l *bufferedLogger) Errorf(format string, v ...interface{}) {
+func (l *bufferedLogger) Errorf(format string, v ...any) {
 	line := fmt.Sprintf("%s %d %s", []any{v[1], v[2], v[3]}...)
 	fmt.Fprintf(l, "error: %s ", line)
 	fmt.Fprintln(l)
 }
 
-func (l *bufferedLogger) Fatalf(format string, v ...interface{}) {
+func (l *bufferedLogger) Fatalf(format string, v ...any) {
 	line := fmt.Sprintf("%s %d %s", []any{v[1], v[2], v[3]}...)
 	fmt.Fprintf(l, "fatal: %s ", line)
 	fmt.Fprintln(l)
 }
 
-func (l *bufferedLogger) Printf(format string, v ...interface{}) {
+func (l *bufferedLogger) Printf(format string, v ...any) {
 	l.Infof(format, v...)
 }
 
-func (l *bufferedLogger) Warnf(format string, v ...interface{}) {
+func (l *bufferedLogger) Warnf(format string, v ...any) {
 	line := fmt.Sprintf("%s %d %s", []any{v[1], v[2], v[3]}...)
 	fmt.Fprintf(l, "warn: %s ", line)
 	fmt.Fprintln(l)

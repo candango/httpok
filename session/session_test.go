@@ -45,13 +45,13 @@ func TestSessionServer(t *testing.T) {
 
 		sess := security.RandomString(64)
 
-		err = engine.Store(sess, map[string]interface{}{
+		err = engine.Store(sess, map[string]any{
 			"key": "value",
 		})
 		if err != nil {
 			t.Error(err)
 		}
-		var sessData map[string]interface{}
+		var sessData map[string]any
 
 		err = engine.Read(sess, &sessData)
 		if err != nil {
@@ -83,15 +83,15 @@ func TestSessionServer(t *testing.T) {
 		sess3 := security.RandomString(64)
 		file3 := fmt.Sprintf("%s.sess", filepath.Join(engine.Dir, sess3))
 
-		err = engine.Store(sess1, map[string]interface{}{
+		err = engine.Store(sess1, map[string]any{
 			"key": "value",
 		})
 		assert.True(t, fileExists(file1))
-		err = engine.Store(sess2, map[string]interface{}{
+		err = engine.Store(sess2, map[string]any{
 			"key": "value",
 		})
 		assert.True(t, fileExists(file2))
-		err = engine.Store(sess3, map[string]interface{}{
+		err = engine.Store(sess3, map[string]any{
 			"key": "value",
 		})
 		assert.True(t, fileExists(file3))
