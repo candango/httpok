@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -67,7 +66,7 @@ func TestGracefulServer(t *testing.T) {
 	gs := NewGracefulServer(srv)
 	var c chan os.Signal
 	go func() {
-		c = gs.Run()
+		gs.Run()
 	}()
 
 	time.Sleep(1 * time.Second)
@@ -85,7 +84,7 @@ func TestGracefulServer(t *testing.T) {
 	resp.Body.Close()
 
 	// Send SIGTERM down the pipe
-	c <- syscall.SIGTERM
+	gs.sigChan <- syscall.SIGTERM
 	time.Sleep(1 * time.Second)
 
 	resp, err = http.Get("http://localhost" + addr)

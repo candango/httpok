@@ -37,6 +37,7 @@ type GracefulServer struct {
 	context.Context
 	logger.Logger
 	SessionEngine session.Engine
+	sigChan       chan os.Signal
 }
 
 func NewGracefulServer(s *http.Server) *GracefulServer {
@@ -51,7 +52,7 @@ func NewGracefulServer(s *http.Server) *GracefulServer {
 // signals to gracefully shut down.
 // It takes optional signals to listen for; if none are provided, it uses
 // default signals.
-func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
+func (s *GracefulServer) Run(sig ...os.Signal) {
 	l := s.Logger
 	if l == nil {
 		l = &logger.StandardLogger{}
@@ -86,6 +87,5 @@ func (s *GracefulServer) Run(sig ...os.Signal) chan os.Signal {
 
 		l.Printf("%s shutdown gracefully", s.Name)
 	}()
-
-	return c
+	<-done
 }
