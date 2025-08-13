@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/go-kit/log v0.2.0
-	github.com/redis/go-redis/v9 v9.7.0
+	github.com/redis/go-redis/v9 v9.7.3
 	github.com/stretchr/testify v1.9.0
 )
 
