@@ -63,8 +63,7 @@ func TestGracefulServer(t *testing.T) {
 	}
 
 	// Create GracefulServer with our custom server
-	gs := NewGracefulServer(srv)
-	var c chan os.Signal
+	gs := NewGracefulServer(srv, "test-server")
 	go func() {
 		gs.Run()
 	}()
