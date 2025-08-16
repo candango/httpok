@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -49,6 +50,7 @@ type GracefulServer struct {
 	ShutdownTimeout float64
 	cancel          context.CancelFunc
 	CancelFunc      GracefulCancelFunc
+	cancelMutex     sync.Mutex
 	sigChan         chan os.Signal
 }
 
@@ -80,6 +82,8 @@ func (s *GracefulServer) WithCancelFunc(cancelFunc GracefulCancelFunc) *Graceful
 // Returns an error if the shutdown cancel function is not available (e.g., Run
 // has not been called).
 func (s *GracefulServer) TriggerShutdown() error {
+	s.cancelMutex.Lock()
+	defer s.cancelMutex.Unlock()
 	if s.cancel == nil {
 		return fmt.Errorf("no shutdown cancel function available")
 	}
@@ -108,7 +112,9 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 	s.sigChan = newSignalChan(sig...)
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(s.Context)
+	s.cancelMutex.Lock()
 	s.cancel = cancel
+	s.cancelMutex.Unlock()
 	go func() {
 		select {
 		case sig := <-s.sigChan:

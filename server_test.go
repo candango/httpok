@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"syscall"
 	"testing"
 	"time"
 
@@ -82,8 +81,8 @@ func TestGracefulServer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
-	// Send SIGTERM down the pipe
-	gs.sigChan <- syscall.SIGTERM
+	// Triggering shutdown
+	gs.TriggerShutdown()
 	time.Sleep(1 * time.Second)
 
 	resp, err = http.Get("http://localhost" + addr)
