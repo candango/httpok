@@ -1,6 +1,6 @@
 module github.com/candango/httpok
 
-go 1.22
+go 1.23
 
 require (
 	github.com/go-kit/log v0.2.0

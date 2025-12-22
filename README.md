@@ -1,4 +1,4 @@
-# Candango HttpOK
+# Candango HTTPok
 
 Welcome to the world of httpok, your Go library for extending the capabilities
 of the standard net/http package!
@@ -19,4 +19,4 @@ initiatives. Available under the [MIT License](https://mit-license.org).
 This site and all documentation are licensed under
 [Creative Commons 3.0](http://creativecommons.org/licenses/by/3.0/).
 
-Copyright © 2024 Flavio Garcia
+Copyright © 2024-2026 Flavio Garcia
