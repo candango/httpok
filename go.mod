@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/go-kit/log v0.2.1
 	github.com/redis/go-redis/v9 v9.7.3
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
