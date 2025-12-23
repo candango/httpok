@@ -18,7 +18,7 @@ type Store interface {
 	Get(ctx context.Context, id string) ([]byte, error)
 
 	// GetString retrieves the string value for the given id.
-	GetString(id string, ctx context.Context) (string, error)
+	GetString(ctx context.Context, id string) (string, error)
 
 	// Set saves or updates a value for the given id, updating the LastUpdate
 	// time.
