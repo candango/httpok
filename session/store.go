@@ -32,4 +32,9 @@ type Store interface {
 
 	// Stop tears down resources.
 	Stop(ctx context.Context) error
+
+	// Touch updates the session's ttl, typically to implement sliding
+	// expiration. It does not modify the session data.
+	// Returns an error if the id does not exist.
+	Touch(ctx context.Context, id string) error
 }
