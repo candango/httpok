@@ -1,6 +1,9 @@
 package httpok
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 
@@ -37,6 +40,31 @@ func NewWrappedServeMux(ww *WrappedWriter) http.Handler {
 	h.HandleFunc("/ok", handler.GetOK)
 	h.HandleFunc("/internal_error", handler.GetInternalError)
 	return Wrap(h, ww)
+}
+
+func TestBodyAsString(t *testing.T) {
+	body := "hello world"
+	res := &http.Response{
+		Body: io.NopCloser(bytes.NewBufferString(body)),
+	}
+	result, err := BodyAsString(res)
+	assert.NoError(t, err)
+	assert.Equal(t, body, result)
+}
+
+func TestBodyAsJson(t *testing.T) {
+	type Data struct {
+		Message string `json:"message"`
+	}
+	expected := Data{Message: "hello"}
+	jsonBytes, _ := json.Marshal(expected)
+	res := &http.Response{
+		Body: io.NopCloser(bytes.NewBuffer(jsonBytes)),
+	}
+	var actual Data
+	err := BodyAsJson(res, &actual)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, actual)
 }
 
 func TestWrappedWriter(t *testing.T) {
