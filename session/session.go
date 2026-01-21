@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/candango/httpok/logger"
-	"github.com/candango/httpok/security"
 )
 
 const (
@@ -26,21 +22,40 @@ const (
 )
 
 // Engine defines the interface for session management.
+// It abstracts session lifecycle operations and storage, allowing different backends.
+// Implementations should handle session creation, retrieval, persistence, and cleanup.
 type Engine interface {
-	Enabled() bool
-	NewId() string
-	SetEnabled(bool)
-	// TODO: PurgeSession(id string)
-	Name() string
-	SetName(string)
-	Read(string, any) error
+	// NewId generates a new unique session ID.
+	NewId(ctx context.Context) string
+
+	// Start initializes the engine with the given context.
 	Start(context.Context) error
-	Stop() error
-	Store(string, any) error
-	Purge() error
-	GetSession(string, context.Context) (Session, error)
-	SessionNotExists(string) (bool, error)
-	StoreSession(string, Session) error
+
+	// Stop releases any resources held by the engine and performs cleanup
+	// using the provided context.
+	Stop(context.Context) error
+
+	// Properties returns engine configuration and metadata.
+	Properties() *EngineProperties
+
+	// Purge removes expired or invalid sessions.
+	Purge(ctx context.Context) error
+
+	// GetSession retrieves a session by ID and context.
+	GetSession(ctx context.Context, id string) (Session, error)
+
+	// SessionExists checks if a session with the given ID exists.
+	SessionExists(ctx context.Context, id string) (bool, error)
+
+	// SaveSession persists the session data for the given ID.
+	SaveSession(ctx context.Context, id string, s Session) error
+}
+
+// IdGenerator defines an interface for generating unique session IDs.
+// Implementations can provide different algorithms (e.g., UUID, random strings).
+type IdGenerator interface {
+
+	// NewId returns a new unique session ID as a string.
 }
 
 // EngineFromContext retrieves the session Engine from the context.
@@ -59,7 +74,7 @@ func SessionFromContext(ctx context.Context) (*Session, error) {
 		return nil, errors.New("session value not found into the conext")
 	}
 	test := s.(*Session)
-	log.Println(test.Id)
+	log.Printf("\n\nThe session id we should get: %s\n\n", test.Id)
 
 	return test, nil
 }
@@ -67,224 +82,13 @@ func SessionFromContext(ctx context.Context) (*Session, error) {
 // EngineProperties contains common properties for session engines.
 type EngineProperties struct {
 	AgeLimit time.Duration
-	enabled  bool
+	Enabled  bool
 	Encoder
 	logger.Logger
-	name string
+	Name string
 	// TODO: Add this to the interface
 	Prefix        string
 	PurgeDuration time.Duration
-}
-
-// FileEngine implements the Engine interface for file-based session storage.
-type FileEngine struct {
-	EngineProperties
-	Dir string
-}
-
-// NewFileEngine creates and returns a new FileEngine with default settings.
-func NewFileEngine() *FileEngine {
-	dir := filepath.Join(os.TempDir(), "httpok", "sess")
-	return &FileEngine{
-		EngineProperties: EngineProperties{
-			AgeLimit:      30 * time.Minute,
-			enabled:       true,
-			Encoder:       &JsonEncoder{},
-			name:          DefaultName,
-			Prefix:        DefaultPrefix,
-			PurgeDuration: 2 * time.Minute,
-		},
-		Dir: dir,
-	}
-}
-
-// Enabled returns whether the session management is enabled.
-func (e *FileEngine) Enabled() bool {
-	return e.enabled
-}
-
-// SetEnabled sets the enabled status of the session management.
-func (e *FileEngine) SetEnabled(enabled bool) {
-	e.enabled = enabled
-}
-
-// NewId generates and returns a new session ID.
-func (e *FileEngine) NewId() string {
-	return security.RandomString(64)
-}
-
-// GetSession retrieves a session from file storage based on the given ID.
-func (e *FileEngine) GetSession(id string, ctx context.Context) (Session, error) {
-	if e.Enabled() && id != "" {
-		var v map[string]any
-		sessFile := filepath.Join(e.Dir, fmt.Sprintf("%s.sess", id))
-		if !fileExists(sessFile) {
-			err := e.Store(id, map[string]any{})
-			if err != nil {
-				return Session{}, err
-			}
-		}
-		err := e.Read(id, &v)
-		if err != nil {
-			return Session{}, err
-		}
-		s := Session{
-			Id:        id,
-			Changed:   false,
-			Ctx:       ctx,
-			Data:      v,
-			Destroyed: false,
-		}
-		return s, nil
-	}
-	return Session{}, nil
-}
-
-// SessionNotExists checks if a session with the given ID does not exist in
-// file storage.
-func (e *FileEngine) SessionNotExists(id string) (bool, error) {
-	sessFile := filepath.Join(e.Dir, fmt.Sprintf("%s.sess", id))
-	log.Println(sessFile)
-	if fileExists(sessFile) {
-		return false, nil
-	}
-	return true, nil
-}
-
-// StoreSession saves the session data back to file storage.
-func (e *FileEngine) StoreSession(id string, s Session) error {
-	if e.Enabled() && id != "" {
-		err := e.Store(id, s.Data)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	return nil
-}
-
-// Name returns the name of the session engine.
-func (e *FileEngine) Name() string {
-	return e.name
-}
-
-// SetName sets the name of the session engine.
-func (e *FileEngine) SetName(n string) {
-	e.name = n
-}
-
-// fileExists checks if a file exists at the given path.
-func fileExists(name string) bool {
-	_, err := os.Stat(name)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-	return true
-}
-
-// Read retrieves and decodes session data from file storage.
-func (e *FileEngine) Read(id string, v any) error {
-	sessFile := filepath.Join(e.Dir, fmt.Sprintf("%s.sess", id))
-	file, err := os.Open(sessFile)
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	buffer := make([]byte, 1024)
-	n, err := file.Read(buffer)
-	if err != nil {
-		return err
-	}
-
-	err = e.Encoder.Decode(buffer[:n], v)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Start initializes the directory for session storage.
-func (e *FileEngine) Start(_ context.Context) error {
-	fileInfo, err := os.Stat(e.Dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(e.Dir, 0o774)
-			if err != nil {
-				return errors.New(
-					fmt.Sprintf("error creating session dir %s: %v", e.Dir,
-						err),
-				)
-			}
-			return nil
-		}
-		return errors.New(
-			fmt.Sprintf("error stating session dir %s: %v", e.Dir, err),
-		)
-	}
-
-	if fileInfo.Mode().IsRegular() {
-		return errors.New(
-			fmt.Sprintf("there is a file named as %s it is not possible to "+
-				"create the sesssion dir", e.Dir),
-		)
-	}
-	// TODO: start purge rotine
-
-	return nil
-}
-
-// Stop is a placeholder for stopping the session engine, currently does
-// nothing.
-func (e *FileEngine) Stop() error {
-	return nil
-}
-
-// Store saves session data to file storage.
-func (e *FileEngine) Store(id string, v any) error {
-	sessFile := filepath.Join(e.Dir, fmt.Sprintf("%s.sess", id))
-	file, err := os.OpenFile(sessFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	data, err := e.Encoder.Encode(v)
-
-	_, err = file.Write(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Purge removes expired sessions from file storage.
-func (e *FileEngine) Purge() error {
-
-	files, err := os.ReadDir(e.Dir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		info, err := file.Info()
-		if err != nil {
-			return err
-		}
-		filePath := filepath.Join(e.Dir, file.Name())
-		age := time.Now().Sub(info.ModTime())
-		if age > e.AgeLimit {
-			err := os.Remove(filePath)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 // Encoder is an interface for encoding and decoding session data.
@@ -345,11 +149,11 @@ func (s *Session) Delete(key string) error {
 func (s *Session) Destroy() error {
 	s.Clear()
 	s.Destroyed = true
-	e, err := EngineFromContext(s.Ctx)
-	if err != nil {
-		return err
-	}
-	e.Store(s.Id, s.Data)
+	// e, err := EngineFromContext(s.Ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.Store(s.Id, s.Data)
 	return nil
 
 }
