@@ -35,7 +35,7 @@ func NewMemoryStore() *MemoryStore {
 func (s *MemoryStore) Start(ctx context.Context) error { return nil }
 
 // Stop is a no-op for MemoryStore.
-func (s *MemoryStore) Stop() error { return nil }
+func (s *MemoryStore) Stop(ctx context.Context) error { return nil }
 
 // Delete removes any entry for the given id
 func (s *MemoryStore) Delete(ctx context.Context, id string) error {
@@ -92,7 +92,7 @@ func (s *MemoryStore) SetString(ctx context.Context, id string,
 }
 
 // Purge deletes all entries older than maxAge
-func (s *MemoryStore) Purge(maxAge time.Duration) error {
+func (s *MemoryStore) Purge(ctx context.Context, maxAge time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, entry := range s.data {
