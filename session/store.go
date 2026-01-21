@@ -2,6 +2,10 @@ package session
 
 import (
 	"context"
+	"errors"
+	"time"
+
+	"github.com/candango/httpok/security"
 )
 
 // Store is a generic key-value engine where the key is a string (such as a
@@ -20,6 +24,9 @@ type Store interface {
 	// GetString retrieves the string value for the given id.
 	GetString(ctx context.Context, id string) (string, error)
 
+	// Purge removes expired or invalid sessions and returns an error.
+	Purge(ctx context.Context, maxAge time.Duration) error
+
 	// Set saves or updates a value for the given id, updating the LastUpdate
 	// time.
 	Set(ctx context.Context, id string, val []byte) error
@@ -37,4 +44,137 @@ type Store interface {
 	// expiration. It does not modify the session data.
 	// Returns an error if the id does not exist.
 	Touch(ctx context.Context, id string) error
+}
+
+// StoreEngine implements the Engine interface by delegating session operations
+// to a pluggable Store backend. It holds engine properties and a Store
+// instance, allowing flexible session storage strategies (e.g., in-memory,
+// file, etc.).
+type StoreEngine struct {
+	properties *EngineProperties
+	Store
+}
+
+// NewStoreEngine creates and returns a new StoreEngine.
+// If custom properties are provided, they are used; otherwise, default
+// settings are applied.
+func NewStoreEngine(store Store, props ...*EngineProperties) *StoreEngine {
+	if len(props) > 0 && props[0] != nil {
+		return &StoreEngine{
+			properties: props[0],
+			Store:      store,
+		}
+	}
+	return &StoreEngine{
+		properties: &EngineProperties{
+			AgeLimit:      30 * time.Minute,
+			Enabled:       true,
+			Encoder:       &JsonEncoder{},
+			Name:          DefaultName,
+			Prefix:        DefaultPrefix,
+			PurgeDuration: 2 * time.Minute,
+		},
+		Store: store,
+	}
+}
+
+// NewId generates a new unique session ID.
+func (e *StoreEngine) NewId(ctx context.Context) string {
+	// TODO: use the id generator here
+	return security.RandomString(60)
+}
+
+// Start initializes the engine with the given context.
+func (e *StoreEngine) Start(ctx context.Context) error {
+	return e.Store.Start(ctx)
+}
+
+// Stop releases any resources held by the engine and performs cleanup using
+// the provided context.
+func (e *StoreEngine) Stop(ctx context.Context) error {
+	return e.Store.Stop(ctx)
+}
+
+// Properties returns engine configuration and metadata.
+func (e *StoreEngine) Properties() *EngineProperties {
+	return e.properties
+}
+
+// Purge removes expired or invalid sessions.
+func (e *StoreEngine) Purge(ctx context.Context) error {
+	if !e.properties.Enabled {
+		return errors.New("engine is disabled")
+	}
+	return e.Store.Purge(ctx, e.properties.AgeLimit)
+}
+
+// GetSession retrieves a session by ID and context.
+func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error) {
+	s := Session{}
+	if !e.properties.Enabled {
+		return s, errors.New("engine is disabled")
+	}
+	if id == "" {
+		return s, errors.New("engine is disabled")
+	}
+	var v map[string]any
+	ok, err := e.Store.Exists(ctx, id)
+	if err != nil {
+		return s, err
+	}
+	if !ok {
+		data, err := e.properties.Encoder.Encode(map[string]any{})
+		if err != nil {
+			return s, err
+		}
+		e.Store.Set(ctx, id, data)
+	}
+	data, err := e.Store.Get(ctx, id)
+	if err != nil {
+		return s, err
+	}
+	err = e.properties.Encoder.Decode(data, &v)
+	if err != nil {
+		return s, err
+	}
+	// TODO: I think we should only set Id and Data here
+	return Session{
+		Id:        id,
+		Changed:   false,
+		Ctx:       ctx, // <=== THIS GUY SHOULD GO!!!
+		Data:      v,
+		Destroyed: false,
+	}, nil
+}
+
+// SessionExists checks if a session with the given ID exists.
+func (e *StoreEngine) SessionExists(ctx context.Context, id string) (bool, error) {
+	if !e.properties.Enabled {
+		return false, errors.New("engine is disabled")
+	}
+	return e.Store.Exists(ctx, id)
+}
+
+// SaveSession persists the session data for the given ID.
+func (e *StoreEngine) SaveSession(ctx context.Context, id string, session Session) error {
+	if !e.properties.Enabled {
+		return errors.New("engine is disabled")
+	}
+	if id == "" {
+		return errors.New("engine is disabled")
+	}
+
+	ok, err := e.Store.Exists(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		e.Store.Touch(ctx, id)
+	}
+
+	data, err := e.properties.Encoder.Encode(session.Data)
+	if err != nil {
+		return err
+	}
+	return e.Store.Set(ctx, id, data)
 }

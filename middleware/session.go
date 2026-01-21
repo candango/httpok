@@ -33,22 +33,22 @@ func Sessioned(e session.Engine) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fromServer := false
 			ctxEngine := context.WithValue(r.Context(), session.ContextEngValue, e)
-			cookie, err := r.Cookie(e.Name())
+			cookie, err := r.Cookie(e.Properties().Name)
 			if err != nil {
 				fromServer = true
-				cookie = newCookie(e.Name(), e.NewId(), 1*time.Hour)
+				cookie = newCookie(e.Properties().Name, e.NewId(r.Context()), 1*time.Hour)
 				log.Printf("cookie %s does not exists", cookie.Name)
 				http.SetCookie(w, cookie)
 			}
 			log.Printf("BEM AQUI: from server %v", fromServer)
-			nok, err := e.SessionNotExists(cookie.Value)
-			if !fromServer && nok {
+			ok, err := e.SessionExists(ctxEngine, cookie.Value)
+			if !fromServer && !ok {
 				fromServer = true
-				cookie = newCookie(e.Name(), e.NewId(), 1*time.Hour)
+				cookie = newCookie(e.Properties().Name, e.NewId(r.Context()), 1*time.Hour)
 				log.Printf("cookie %s does exists but session does not exists", cookie.Name)
 				http.SetCookie(w, cookie)
 			}
-			s, err := e.GetSession(cookie.Value, ctxEngine)
+			s, err := e.GetSession(ctxEngine, cookie.Value)
 			if err != nil {
 				// TODO: Log this error
 				w.WriteHeader(http.StatusInternalServerError)
@@ -58,7 +58,7 @@ func Sessioned(e session.Engine) func(http.Handler) http.Handler {
 			req := r.WithContext(ctxSess)
 			log.Printf("From server: %v\n", fromServer)
 			next.ServeHTTP(w, req)
-			e.StoreSession(s.Id, s)
+			e.SaveSession(ctxEngine, s.Id, s)
 			log.Printf("Session Data at the end: %v\n", s.Data)
 			// TODO: Store the session
 		})
