@@ -67,14 +67,14 @@ func TestMemorySessionStore(t *testing.T) {
 		store := NewMemoryStore()
 		store.Set(ctx, "old", []byte("expired"))
 		store.mu.Lock()
-		store.data["old"] = memoryEntry{
+		store.Data["old"] = memoryEntry{
 			Value:       []byte("expired"),
 			LastTouched: time.Now().Add(-2 * time.Hour),
 		}
 		store.mu.Unlock()
 		store.Set(ctx, "fresh", []byte("valid"))
 
-		err := store.Purge(1 * time.Hour)
+		err := store.Purge(ctx, 1*time.Hour)
 		assert.NoError(t, err)
 
 		ok, _ := store.Exists(ctx, "old")
@@ -90,22 +90,22 @@ func TestMemorySessionStore(t *testing.T) {
 
 		store.mu.Lock()
 		oldTime := time.Now().Add(-2 * time.Hour)
-		entry := store.data["session"]
+		entry := store.Data["session"]
 		entry.LastTouched = oldTime
-		store.data["session"] = entry
+		store.Data["session"] = entry
 		store.mu.Unlock()
 
 		err := store.Touch(ctx, "session")
 		assert.NoError(t, err)
 
-		err = store.Purge(1 * time.Hour)
+		err = store.Purge(ctx, 1*time.Hour)
 		assert.NoError(t, err)
 
 		ok, _ := store.Exists(ctx, "session")
 		assert.True(t, ok)
 
 		store.mu.RLock()
-		newEntry := store.data["session"]
+		newEntry := store.Data["session"]
 		store.mu.RUnlock()
 		assert.False(t, newEntry.Expired(1*time.Hour))
 		assert.True(t, newEntry.LastTouched.After(oldTime))

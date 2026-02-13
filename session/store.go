@@ -27,8 +27,13 @@ type Store interface {
 	// Purge removes expired or invalid sessions and returns an error.
 	Purge(ctx context.Context, maxAge time.Duration) error
 
-	// Set saves or updates a value for the given id, updating the LastUpdate
-	// time.
+	// Set stores a value and MUST implicitly refresh its expiration/TTL.
+	// How TTL is tracked is implementation-specific:
+	// - MemoryStore: updates LastTouched timestamp
+	// - FileStore: updates file modification time
+	// - Redis: uses SET key value EX ttl
+	// Implementations that do not refresh TTL when setting a value violate the
+	// Store contract.
 	Set(ctx context.Context, id string, val []byte) error
 
 	// SetString stores a string value as bytes.
@@ -133,6 +138,10 @@ func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error
 	if err != nil {
 		return s, err
 	}
+	e.Store.Touch(ctx, id)
+	if err != nil {
+		return s, err
+	}
 	err = e.properties.Encoder.Decode(data, &v)
 	if err != nil {
 		return s, err
@@ -162,14 +171,6 @@ func (e *StoreEngine) SaveSession(ctx context.Context, id string, session Sessio
 	}
 	if id == "" {
 		return errors.New("engine is disabled")
-	}
-
-	ok, err := e.Store.Exists(ctx, id)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		e.Store.Touch(ctx, id)
 	}
 
 	data, err := e.properties.Encoder.Encode(session.Data)

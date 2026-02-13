@@ -21,13 +21,13 @@ func (e memoryEntry) Expired(maxAge time.Duration) bool {
 // MemoryStore is a threadsafe in-memory key-value store, suitable for testing
 // or single-instance use.
 type MemoryStore struct {
-	data map[string]memoryEntry
+	Data map[string]memoryEntry
 	mu   sync.RWMutex
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		data: map[string]memoryEntry{},
+		Data: map[string]memoryEntry{},
 	}
 }
 
@@ -41,7 +41,7 @@ func (s *MemoryStore) Stop(ctx context.Context) error { return nil }
 func (s *MemoryStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.data, id)
+	delete(s.Data, id)
 	return nil
 }
 
@@ -49,7 +49,7 @@ func (s *MemoryStore) Delete(ctx context.Context, id string) error {
 func (s *MemoryStore) Exists(ctx context.Context, id string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.data[id]
+	_, ok := s.Data[id]
 	return ok, nil
 }
 
@@ -57,7 +57,7 @@ func (s *MemoryStore) Exists(ctx context.Context, id string) (bool, error) {
 func (s *MemoryStore) Get(ctx context.Context, id string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	e, ok := s.data[id]
+	e, ok := s.Data[id]
 	if !ok {
 		return nil, errors.New("not found")
 	}
@@ -78,7 +78,7 @@ func (s *MemoryStore) GetString(ctx context.Context, id string) (string,
 func (s *MemoryStore) Set(ctx context.Context, id string, val []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data[id] = memoryEntry{
+	s.Data[id] = memoryEntry{
 		Value:       val,
 		LastTouched: time.Now(),
 	}
@@ -95,9 +95,9 @@ func (s *MemoryStore) SetString(ctx context.Context, id string,
 func (s *MemoryStore) Purge(ctx context.Context, maxAge time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, entry := range s.data {
+	for id, entry := range s.Data {
 		if entry.Expired(maxAge) {
-			delete(s.data, id)
+			delete(s.Data, id)
 		}
 	}
 	return nil
@@ -111,11 +111,11 @@ func (s *MemoryStore) Purge(ctx context.Context, maxAge time.Duration) error {
 func (s *MemoryStore) Touch(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	entry, ok := s.data[id]
+	entry, ok := s.Data[id]
 	if !ok {
 		return errors.New("not found")
 	}
 	entry.LastTouched = time.Now()
-	s.data[id] = entry
+	s.Data[id] = entry
 	return nil
 }
