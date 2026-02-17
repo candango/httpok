@@ -177,6 +177,10 @@ func (s *FileStore) Purge(ctx context.Context, maxAge time.Duration) error {
 	return nil
 }
 
+func (s *FileStore) RequiresPurge() bool {
+	return true
+}
+
 // Touch updates the LastTouched timestamp for the session entry identified by
 // id, effectively renewing its expiration for sliding expiration policies.
 // Only the session's last access time is updated; the session value itself is

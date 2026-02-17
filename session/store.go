@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/candango/httpok/logger"
 	"github.com/candango/httpok/security"
 )
 
@@ -45,11 +46,25 @@ type Store interface {
 	// Stop tears down resources.
 	Stop(ctx context.Context) error
 
+	// RequiresPurge returns whether this Store implementation requires manual
+	// session expiration cleanup. Stores with automatic TTL/expiration (e.g.,
+	// Redis) return false. Stores tracking expiration manually (e.g.,
+	// MemoryStore, FileStore) return true, signaling that StoreEngine must
+	// periodically call Purge to remove expired sessions.
+	//
+	// Example implementations:
+	//   - MemoryStore.RequiresPurge() -> true  (manual LastTouched tracking)
+	//   - FileStore.RequiresPurge() -> true    (file mtime tracking)
+	//   - RedisStore.RequiresPurge() -> false  (Redis TTL automatic)
+	RequiresPurge() bool
+
 	// Touch updates the session's ttl, typically to implement sliding
 	// expiration. It does not modify the session data.
 	// Returns an error if the id does not exist.
 	Touch(ctx context.Context, id string) error
 }
+
+type storeEngineOptions func(*StoreEngine)
 
 // StoreEngine implements the Engine interface by delegating session operations
 // to a pluggable Store backend. It holds engine properties and a Store
@@ -58,19 +73,16 @@ type Store interface {
 type StoreEngine struct {
 	properties *EngineProperties
 	Store
+	logger    logger.Logger
+	purgeDone chan struct{}
+	started   bool
 }
 
 // NewStoreEngine creates and returns a new StoreEngine.
 // If custom properties are provided, they are used; otherwise, default
 // settings are applied.
-func NewStoreEngine(store Store, props ...*EngineProperties) *StoreEngine {
-	if len(props) > 0 && props[0] != nil {
-		return &StoreEngine{
-			properties: props[0],
-			Store:      store,
-		}
-	}
-	return &StoreEngine{
+func NewStoreEngine(store Store, opts ...storeEngineOptions) *StoreEngine {
+	e := &StoreEngine{
 		properties: &EngineProperties{
 			AgeLimit:      30 * time.Minute,
 			Enabled:       true,
@@ -79,7 +91,24 @@ func NewStoreEngine(store Store, props ...*EngineProperties) *StoreEngine {
 			Prefix:        DefaultPrefix,
 			PurgeDuration: 2 * time.Minute,
 		},
-		Store: store,
+		Store:  store,
+		logger: &logger.StandardLogger{},
+	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
+}
+
+func WithLogger(l logger.Logger) storeEngineOptions {
+	return func(e *StoreEngine) {
+		e.logger = l
+	}
+}
+
+func WithProperties(p *EngineProperties) storeEngineOptions {
+	return func(e *StoreEngine) {
+		e.properties = p
 	}
 }
 
@@ -91,6 +120,15 @@ func (e *StoreEngine) NewId(ctx context.Context) string {
 
 // Start initializes the engine with the given context.
 func (e *StoreEngine) Start(ctx context.Context) error {
+	if e.started {
+		return errors.New("store engine already started")
+	}
+	e.started = true
+	if e.RequiresPurge() {
+		e.purgeDone = make(chan struct{})
+		go e.periodicPurge(ctx)
+	}
+
 	return e.Store.Start(ctx)
 }
 
@@ -103,6 +141,27 @@ func (e *StoreEngine) Stop(ctx context.Context) error {
 // Properties returns engine configuration and metadata.
 func (e *StoreEngine) Properties() *EngineProperties {
 	return e.properties
+}
+
+func (e *StoreEngine) periodicPurge(ctx context.Context) error {
+	ticker := time.NewTicker(e.properties.PurgeDuration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			ticker.Stop()
+
+			if err := e.Purge(ctx); err != nil {
+				e.logger.Errorf("periodic purge failed: %v", err)
+			}
+			ticker = time.NewTicker(e.properties.PurgeDuration)
+		case <-e.purgeDone:
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 // Purge removes expired or invalid sessions.
@@ -120,7 +179,7 @@ func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error
 		return s, errors.New("engine is disabled")
 	}
 	if id == "" {
-		return s, errors.New("engine is disabled")
+		return s, errors.New("session id is empty")
 	}
 	var v map[string]any
 	ok, err := e.Store.Exists(ctx, id)
@@ -138,7 +197,7 @@ func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error
 	if err != nil {
 		return s, err
 	}
-	e.Store.Touch(ctx, id)
+	err = e.Store.Touch(ctx, id)
 	if err != nil {
 		return s, err
 	}
@@ -170,7 +229,7 @@ func (e *StoreEngine) SaveSession(ctx context.Context, id string, session Sessio
 		return errors.New("engine is disabled")
 	}
 	if id == "" {
-		return errors.New("engine is disabled")
+		return errors.New("session id is empty")
 	}
 
 	data, err := e.properties.Encoder.Encode(session.Data)

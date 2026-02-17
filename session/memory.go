@@ -103,11 +103,14 @@ func (s *MemoryStore) Purge(ctx context.Context, maxAge time.Duration) error {
 	return nil
 }
 
+func (s *MemoryStore) RequiresPurge() bool {
+	return true
+}
+
 // Touch updates the LastTouched timestamp for the session entry identified by
 // id, effectively renewing its expiration for sliding expiration policies.
 // Only the session's last access time is updated; the session value itself is
-// not changed.
-// Returns an error if the entry does not exist.
+// not changed. Returns an error if the entry does not exist.
 func (s *MemoryStore) Touch(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
