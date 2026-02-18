@@ -3,6 +3,7 @@ module github.com/candango/httpok
 go 1.23
 
 require (
+	github.com/candango/iook v0.0.3 // indirect
 	github.com/go-kit/log v0.2.1
 	github.com/stretchr/testify v1.11.1
 )
