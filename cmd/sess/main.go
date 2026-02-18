@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/candango/httpok"
 	"github.com/candango/httpok/middleware"
@@ -37,9 +38,14 @@ var template string = `<!DOCTYPE html>
 func main() {
 	mux := http.NewServeMux()
 
-	// store := session.NewMemoryStore()
-	store := session.NewFileStore()
-	s := session.NewStoreEngine(store)
+	store := session.NewMemoryStore()
+	// store := session.NewFileStore()
+	s := session.NewStoreEngine(store, session.WithProperties(
+		&session.EngineProperties{
+			AgeLimit:      7 * time.Second,
+			PurgeDuration: 15 * time.Second,
+		},
+	))
 	s.Properties().Name = "FIRENADOSESSID"
 	// s := session.NewFileEngine()
 	err := s.Start(context.Background())
