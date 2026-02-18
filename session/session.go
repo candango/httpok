@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/candango/httpok/logger"
@@ -67,7 +66,7 @@ type IdGenerator interface {
 func EngineFromContext(ctx context.Context) (Engine, error) {
 	s := ctx.Value(ContextEngValue)
 	if s == nil {
-		return nil, errors.New("engine value not found into the conext")
+		return nil, errors.New("engine value not found into the context")
 	}
 	return s.(Engine), nil
 }
@@ -76,18 +75,19 @@ func EngineFromContext(ctx context.Context) (Engine, error) {
 func SessionFromContext(ctx context.Context) (*Session, error) {
 	s := ctx.Value(ContextSessValue)
 	if s == nil {
-		return nil, errors.New("session value not found into the conext")
+		return nil, errors.New("session value not found into the context")
 	}
-	test := s.(*Session)
-	log.Printf("\n\nThe session id we should get: %s\n\n", test.Id)
-
-	return test, nil
+	sess, ok := s.(*Session)
+	if !ok {
+		return nil, errors.New("session value returned ins't a proper Session")
+	}
+	return sess, nil
 }
 
 // EngineProperties contains common properties for session engines.
 type EngineProperties struct {
 	AgeLimit time.Duration
-	Enabled  bool
+	Enabled  *bool
 	Encoder
 	logger.Logger
 	Name string

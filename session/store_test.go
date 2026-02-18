@@ -113,3 +113,38 @@ func TestStoreEngine(t *testing.T) {
 		assert.NotNil(t, store.Data[id], "session should still exist (proves GetSession touched it)")
 	})
 }
+
+func TestStoreEngineWithPropertiesMerge(t *testing.T) {
+	ptrBool := func(v bool) *bool { return &v }
+	s := NewStoreEngine(NewMemoryStore())
+	sessID := "test-session"
+
+	// Create session with initial properties
+	initial := &EngineProperties{
+		Name:     sessID,
+		Encoder:  &JsonEncoder{},
+		Enabled:  ptrBool(true),
+		AgeLimit: 3600,
+	}
+	WithProperties(initial)(s)
+
+	// Merge partial properties (should NOT overwrite Enabled/MaxAge)
+	partial := &EngineProperties{
+		Encoder:  &JsonEncoder{},
+		Enabled:  nil, // Should NOT change existing true
+		AgeLimit: 0,   // Should NOT change existing 3600
+	}
+	WithProperties(partial)(s)
+
+	// Verify merge result
+	props := s.Properties()
+	assert.Equal(t, true, *props.Enabled, "nil Enabled should not overwrite")
+	assert.Equal(t, time.Duration(3600), props.AgeLimit, "zero MaxAge should not overwrite")
+
+	// Update with explicit value
+	update := &EngineProperties{
+		AgeLimit: 7200,
+	}
+	WithProperties(update)(s)
+	assert.Equal(t, time.Duration(7200), s.Properties().AgeLimit, "non-zero should overwrite")
+}

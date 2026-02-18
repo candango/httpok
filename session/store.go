@@ -82,10 +82,11 @@ type StoreEngine struct {
 // If custom properties are provided, they are used; otherwise, default
 // settings are applied.
 func NewStoreEngine(store Store, opts ...storeEngineOptions) *StoreEngine {
+	pTrue := true
 	e := &StoreEngine{
 		properties: &EngineProperties{
 			AgeLimit:      30 * time.Minute,
-			Enabled:       true,
+			Enabled:       &pTrue,
 			Encoder:       &JsonEncoder{},
 			Name:          DefaultName,
 			Prefix:        DefaultPrefix,
@@ -108,7 +109,27 @@ func WithLogger(l logger.Logger) storeEngineOptions {
 
 func WithProperties(p *EngineProperties) storeEngineOptions {
 	return func(e *StoreEngine) {
-		e.properties = p
+		if p.AgeLimit != 0 {
+			e.Properties().AgeLimit = p.AgeLimit
+		}
+		if p.Enabled != nil && *p.Enabled != *e.Properties().Enabled {
+			e.Properties().Enabled = p.Enabled
+		}
+		if p.Encoder != nil {
+			e.Properties().Encoder = p.Encoder
+		}
+		if p.Logger != nil {
+			e.Properties().Logger = p.Logger
+		}
+		if p.Name != "" {
+			e.Properties().Name = p.Name
+		}
+		if p.Prefix != "" {
+			e.Properties().Prefix = p.Prefix
+		}
+		if p.PurgeDuration != 0 {
+			e.Properties().PurgeDuration = p.PurgeDuration
+		}
 	}
 }
 
@@ -144,14 +165,15 @@ func (e *StoreEngine) Properties() *EngineProperties {
 }
 
 func (e *StoreEngine) periodicPurge(ctx context.Context) error {
+	if err := e.Purge(ctx); err != nil {
+		e.logger.Errorf("periodic purge failed: %v", err)
+	}
 	ticker := time.NewTicker(e.properties.PurgeDuration)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ticker.C:
 			ticker.Stop()
-
 			if err := e.Purge(ctx); err != nil {
 				e.logger.Errorf("periodic purge failed: %v", err)
 			}
@@ -166,7 +188,8 @@ func (e *StoreEngine) periodicPurge(ctx context.Context) error {
 
 // Purge removes expired or invalid sessions.
 func (e *StoreEngine) Purge(ctx context.Context) error {
-	if !e.properties.Enabled {
+	pFalse := false
+	if e.properties.Enabled == nil || e.properties.Enabled == &pFalse {
 		return errors.New("engine is disabled")
 	}
 	return e.Store.Purge(ctx, e.properties.AgeLimit)
@@ -175,7 +198,8 @@ func (e *StoreEngine) Purge(ctx context.Context) error {
 // GetSession retrieves a session by ID and context.
 func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error) {
 	s := Session{}
-	if !e.properties.Enabled {
+	pFalse := false
+	if e.properties.Enabled == nil || e.properties.Enabled == &pFalse {
 		return s, errors.New("engine is disabled")
 	}
 	if id == "" {
@@ -217,7 +241,8 @@ func (e *StoreEngine) GetSession(ctx context.Context, id string) (Session, error
 
 // SessionExists checks if a session with the given ID exists.
 func (e *StoreEngine) SessionExists(ctx context.Context, id string) (bool, error) {
-	if !e.properties.Enabled {
+	pFalse := false
+	if e.properties.Enabled == nil || e.properties.Enabled == &pFalse {
 		return false, errors.New("engine is disabled")
 	}
 	return e.Store.Exists(ctx, id)
@@ -225,7 +250,8 @@ func (e *StoreEngine) SessionExists(ctx context.Context, id string) (bool, error
 
 // SaveSession persists the session data for the given ID.
 func (e *StoreEngine) SaveSession(ctx context.Context, id string, session Session) error {
-	if !e.properties.Enabled {
+	pFalse := false
+	if e.properties.Enabled == nil || e.properties.Enabled == &pFalse {
 		return errors.New("engine is disabled")
 	}
 	if id == "" {
