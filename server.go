@@ -34,13 +34,14 @@ func newSignalChan(sig ...os.Signal) chan os.Signal {
 	return c
 }
 
-// GracefulCancelFunc defines a user-provided function that is called during
-// shutdown for custom cleanup or cancellation logic. It receives a context and
-// returns an error if the cancellation fails.
+// GracefulCancelFunc defines a user-provided function called during graceful
+// shutdown for custom cleanup. The provided context is scoped to the shutdown
+// phase and may include the configured shutdown timeout.
 type GracefulCancelFunc func(context.Context) error
 
-// GracefulServer combines an HTTP server with a context for graceful shutdown
-// handling.
+// GracefulServer combines an HTTP server with a runtime context for graceful
+// shutdown handling. The embedded context is canceled when shutdown is
+// triggered by a signal or by TriggerShutdown.
 type GracefulServer struct {
 	Name string
 	*http.Server
@@ -55,11 +56,15 @@ type GracefulServer struct {
 }
 
 // NewGracefulServer creates a new GracefulServer wrapping the given http.Server.
+// It initializes a cancelable runtime context used to signal shutdown to
+// dependents.
 func NewGracefulServer(s *http.Server, name string) *GracefulServer {
+	ctx, cancel := context.WithCancel(context.Background())
 	gs := &GracefulServer{
 		Name:    name,
 		Server:  s,
-		Context: context.Background(),
+		Context: ctx,
+		cancel:  cancel,
 	}
 	return gs
 }
@@ -71,8 +76,9 @@ func (s *GracefulServer) WithShutdownTimeout(timeout float64) *GracefulServer {
 	return s
 }
 
-// WithCancelFunc sets a custom cancellation function to be called before
-// shutdown. Returns the server for method chaining.
+// WithCancelFunc sets a custom cleanup function called during graceful
+// shutdown before the HTTP server is shut down. The function receives the
+// shutdown context, not the runtime context.
 func (s *GracefulServer) WithCancelFunc(cancelFunc GracefulCancelFunc) *GracefulServer {
 	s.CancelFunc = cancelFunc
 	return s
@@ -93,6 +99,10 @@ func (s *GracefulServer) TriggerShutdown() error {
 
 // Run starts the HTTP server in a goroutine and listens for termination
 // signals to gracefully shut down.
+// It cancels the server runtime context when shutdown is triggered, then runs
+// the custom cancel function and HTTP shutdown using a separate shutdown
+// context. If ShutdownTimeout is set, that timeout applies to the shutdown
+// context.
 // It takes optional signals to listen for; if none are provided, it uses
 // default signals.
 func (s *GracefulServer) Run(sig ...os.Signal) {
@@ -111,23 +121,33 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 	l.Printf("server %s started at %s", s.Name, s.Addr)
 	s.sigChan = newSignalChan(sig...)
 	done := make(chan struct{})
-	ctx, cancel := context.WithCancel(s.Context)
 	s.cancelMutex.Lock()
-	s.cancel = cancel
+	if s.Context == nil {
+		s.Context = context.Background()
+	}
+	if s.cancel == nil {
+		s.Context, s.cancel = context.WithCancel(s.Context)
+	}
+	ctx := s.Context
+	cancel := s.cancel
 	s.cancelMutex.Unlock()
+
 	go func() {
 		select {
 		case sig := <-s.sigChan:
 			l.Printf("shutting down %s due to signal %s", s.Name, sig)
+			cancel()
 		case <-ctx.Done():
 			l.Printf("shutting down %s cancellation triggered", s.Name)
-			ctx, cancel = context.WithCancel(context.Background())
 		}
 
+		shutdownCtx := context.Background()
+		shutdownCancel := func() {}
 		if s.ShutdownTimeout > 0 {
-			ctx, cancel = context.WithTimeout(ctx,
+			shutdownCtx, shutdownCancel = context.WithTimeout(shutdownCtx,
 				time.Duration(s.ShutdownTimeout)*time.Second)
 		}
+		defer shutdownCancel()
 
 		defer func() {
 			signal.Stop(s.sigChan)
@@ -136,12 +156,12 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 		}()
 
 		if s.CancelFunc != nil {
-			if err := s.CancelFunc(ctx); err != nil {
+			if err := s.CancelFunc(shutdownCtx); err != nil {
 				l.Fatalf("Server %s cancellation function failed: %v", s.Name, err)
 			}
 		}
 
-		if err := s.Server.Shutdown(ctx); err != nil {
+		if err := s.Server.Shutdown(shutdownCtx); err != nil {
 			l.Fatalf("Server %s shutdown failed: %v", s.Name, err)
 		}
 
