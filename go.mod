@@ -1,6 +1,6 @@
 module github.com/candango/httpok
 
-go 1.23
+go 1.24
 
 require (
 	github.com/candango/iook v0.0.3
