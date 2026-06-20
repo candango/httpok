@@ -134,6 +134,67 @@ func TestGracefulServerSignalCancelsRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestGracefulServerStartLifecycleHooks(t *testing.T) {
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+	addr := fmt.Sprintf(":%d", port)
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: http.NewServeMux(),
+	}
+
+	calls := make(chan string, 2)
+	gs := NewGracefulServer(srv, "test-server").
+		WithBeforeStartFunc(func(ctx context.Context) error {
+			if ctx == nil {
+				t.Error("expected before start context")
+			}
+			calls <- "before"
+			return nil
+		}).
+		WithAfterStartFunc(func(ctx context.Context) error {
+			if ctx == nil {
+				t.Error("expected after start context")
+			}
+			calls <- "after"
+			return nil
+		})
+
+	done := make(chan struct{})
+	go func() {
+		gs.Run()
+		close(done)
+	}()
+
+	select {
+	case call := <-calls:
+		assert.Equal(t, "before", call)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected before start function to be called")
+	}
+
+	select {
+	case call := <-calls:
+		assert.Equal(t, "after", call)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected after start function to be called")
+	}
+
+	waitForPortInUse(t, port, true)
+
+	err = gs.TriggerShutdown()
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected server shutdown to finish")
+	}
+}
+
 func TestGracefulServer(t *testing.T) {
 	// Generate a random free port
 	port, err := getFreePort()

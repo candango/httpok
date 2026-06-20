@@ -39,6 +39,16 @@ func newSignalChan(sig ...os.Signal) chan os.Signal {
 // phase and may include the configured shutdown timeout.
 type GracefulCancelFunc func(context.Context) error
 
+// GracefulAfterStartFunc defines a user-provided function called after the
+// server start workflow has been triggered. The provided context is the server
+// runtime context.
+type GracefulAfterStartFunc func(context.Context) error
+
+// GracefulBeforeStartFunc defines a user-provided function called before the
+// server start workflow begins. The provided context is the server runtime
+// context.
+type GracefulBeforeStartFunc func(context.Context) error
+
 // GracefulServer combines an HTTP server with a runtime context for graceful
 // shutdown handling. The embedded context is canceled when shutdown is
 // triggered by a signal or by TriggerShutdown.
@@ -50,6 +60,8 @@ type GracefulServer struct {
 	SessionEngine   session.Engine
 	ShutdownTimeout float64
 	cancel          context.CancelFunc
+	AfterStartFunc  GracefulAfterStartFunc
+	BeforeStartFunc GracefulBeforeStartFunc
 	CancelFunc      GracefulCancelFunc
 	cancelMutex     sync.Mutex
 	sigChan         chan os.Signal
@@ -73,6 +85,20 @@ func NewGracefulServer(s *http.Server, name string) *GracefulServer {
 // Returns the server for method chaining.
 func (s *GracefulServer) WithShutdownTimeout(timeout float64) *GracefulServer {
 	s.ShutdownTimeout = timeout
+	return s
+}
+
+// WithAfterStartFunc sets a hook called after the server start workflow has
+// been triggered. The hook receives the server runtime context.
+func (s *GracefulServer) WithAfterStartFunc(afterStartFunc GracefulAfterStartFunc) *GracefulServer {
+	s.AfterStartFunc = afterStartFunc
+	return s
+}
+
+// WithBeforeStartFunc sets a hook called before the server start workflow
+// begins. The hook receives the server runtime context.
+func (s *GracefulServer) WithBeforeStartFunc(beforeStartFunc GracefulBeforeStartFunc) *GracefulServer {
+	s.BeforeStartFunc = beforeStartFunc
 	return s
 }
 
@@ -111,14 +137,6 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 		l = &logger.StandardLogger{}
 	}
 
-	go func() {
-		err := s.ListenAndServe()
-		if err != http.ErrServerClosed {
-			l.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
-		}
-	}()
-
-	l.Printf("server %s started at %s", s.Name, s.Addr)
 	s.sigChan = newSignalChan(sig...)
 	done := make(chan struct{})
 	s.cancelMutex.Lock()
@@ -131,6 +149,21 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 	ctx := s.Context
 	cancel := s.cancel
 	s.cancelMutex.Unlock()
+
+	if s.BeforeStartFunc != nil {
+		if err := s.BeforeStartFunc(ctx); err != nil {
+			l.Fatalf("server %s before start function failed: %v", s.Name, err)
+		}
+	}
+
+	go func() {
+		err := s.ListenAndServe()
+		if err != http.ErrServerClosed {
+			l.Fatalf("server %s HTTP ListenAndServe error: %v", s.Name, err)
+		}
+	}()
+
+	l.Printf("server %s started at %s", s.Name, s.Addr)
 
 	go func() {
 		select {
@@ -157,15 +190,22 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 
 		if s.CancelFunc != nil {
 			if err := s.CancelFunc(shutdownCtx); err != nil {
-				l.Fatalf("Server %s cancellation function failed: %v", s.Name, err)
+				l.Fatalf("server %s cancellation function failed: %v", s.Name, err)
 			}
 		}
 
 		if err := s.Server.Shutdown(shutdownCtx); err != nil {
-			l.Fatalf("Server %s shutdown failed: %v", s.Name, err)
+			l.Fatalf("server %s shutdown failed: %v", s.Name, err)
 		}
 
 		l.Printf("%s shutdown gracefully", s.Name)
 	}()
+
+	if s.AfterStartFunc != nil {
+		if err := s.AfterStartFunc(ctx); err != nil {
+			l.Fatalf("server %s after start function failed: %v", s.Name, err)
+		}
+	}
+
 	<-done
 }
