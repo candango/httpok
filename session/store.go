@@ -7,6 +7,7 @@ import (
 
 	"github.com/candango/httpok/logger"
 	"github.com/candango/httpok/security"
+	scheduler "github.com/candango/schedulerok"
 )
 
 // Store is a generic key-value engine where the key is a string (such as a
@@ -73,9 +74,12 @@ type storeEngineOptions func(*StoreEngine)
 type StoreEngine struct {
 	properties *EngineProperties
 	Store
-	logger    logger.Logger
-	purgeDone chan struct{}
-	started   bool
+	logger           logger.Logger
+	scheduler        *scheduler.Scheduler
+	schedulerCancel  context.CancelFunc
+	schedulerDone    chan error
+	schedulerOptions []scheduler.Option
+	started          bool
 }
 
 // NewStoreEngine creates and returns a new StoreEngine.
@@ -99,6 +103,12 @@ func NewStoreEngine(store Store, opts ...storeEngineOptions) *StoreEngine {
 		opt(e)
 	}
 	return e
+}
+
+func WithSchedulerOptions(options ...scheduler.Option) storeEngineOptions {
+	return func(e *StoreEngine) {
+		e.schedulerOptions = append(e.schedulerOptions, options...)
+	}
 }
 
 func WithLogger(l logger.Logger) storeEngineOptions {
@@ -144,46 +154,84 @@ func (e *StoreEngine) Start(ctx context.Context) error {
 	if e.started {
 		return errors.New("store engine already started")
 	}
-	e.started = true
-	if e.RequiresPurge() {
-		e.purgeDone = make(chan struct{})
-		go e.periodicPurge(ctx)
+
+	if err := e.Store.Start(ctx); err != nil {
+		return err
 	}
 
-	return e.Store.Start(ctx)
+	if e.RequiresPurge() {
+		if err := e.Purge(ctx); err != nil {
+			e.logger.Errorf("initial purge failed: %v", err)
+		}
+
+		purgeScheduler := scheduler.New(e.schedulerOptions...)
+		if _, err := purgeScheduler.AddIntervalFunc(
+			e.properties.PurgeDuration,
+			func(ctx context.Context) error { return e.Purge(ctx) },
+			scheduler.WithID("session-purge"),
+			scheduler.WithOverlap(scheduler.SkipOverlap),
+			scheduler.WithHooks(scheduler.Hooks{
+				OnFailure: func(_ context.Context, event scheduler.Event) {
+					e.logger.Errorf("periodic purge failed: %v", event.Error)
+				},
+			}),
+		); err != nil {
+			_ = e.Store.Stop(ctx)
+			return err
+		}
+
+		schedulerCtx, cancel := context.WithCancel(ctx)
+		e.scheduler = purgeScheduler
+		e.schedulerCancel = cancel
+		e.schedulerDone = make(chan error, 1)
+		go func() {
+			e.schedulerDone <- purgeScheduler.Run(schedulerCtx)
+		}()
+	}
+
+	e.started = true
+	return nil
 }
 
 // Stop releases any resources held by the engine and performs cleanup using
 // the provided context.
 func (e *StoreEngine) Stop(ctx context.Context) error {
-	return e.Store.Stop(ctx)
+	if e.scheduler != nil {
+		if err := e.scheduler.Stop(ctx); err != nil {
+			e.schedulerCancel()
+			return err
+		}
+		e.schedulerCancel()
+		if err := <-e.schedulerDone; err != nil {
+			return err
+		}
+		e.schedulerCancel = nil
+		e.schedulerDone = nil
+		e.scheduler = nil
+	}
+
+	err := e.Store.Stop(ctx)
+	e.started = false
+	return err
+}
+
+// Pause pauses purge dispatches while keeping the scheduler alive.
+func (e *StoreEngine) Pause() {
+	if e.scheduler != nil {
+		e.scheduler.Pause()
+	}
+}
+
+// Resume resumes purge dispatches after a pause.
+func (e *StoreEngine) Resume() {
+	if e.scheduler != nil {
+		e.scheduler.Resume()
+	}
 }
 
 // Properties returns engine configuration and metadata.
 func (e *StoreEngine) Properties() *EngineProperties {
 	return e.properties
-}
-
-func (e *StoreEngine) periodicPurge(ctx context.Context) error {
-	if err := e.Purge(ctx); err != nil {
-		e.logger.Errorf("periodic purge failed: %v", err)
-	}
-	ticker := time.NewTicker(e.properties.PurgeDuration)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			ticker.Stop()
-			if err := e.Purge(ctx); err != nil {
-				e.logger.Errorf("periodic purge failed: %v", err)
-			}
-			ticker = time.NewTicker(e.properties.PurgeDuration)
-		case <-e.purgeDone:
-			return nil
-		case <-ctx.Done():
-			return nil
-		}
-	}
 }
 
 // Purge removes expired or invalid sessions.

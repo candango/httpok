@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	scheduler "github.com/candango/schedulerok"
+	"github.com/candango/schedulerok/clocktest"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -112,6 +114,75 @@ func TestStoreEngine(t *testing.T) {
 
 		assert.NotNil(t, store.Data[id], "session should still exist (proves GetSession touched it)")
 	})
+}
+
+func TestStoreEnginePeriodicPurgeAndRestart(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	engine := NewStoreEngine(store, WithProperties(&EngineProperties{
+		AgeLimit:      time.Millisecond,
+		PurgeDuration: time.Millisecond,
+	}))
+
+	assert.NoError(t, engine.Start(ctx))
+
+	assert.NoError(t, store.Set(ctx, "expired", []byte("data")))
+	store.mu.Lock()
+	entry := store.Data["expired"]
+	entry.LastTouched = time.Now().Add(-time.Hour)
+	store.Data["expired"] = entry
+	store.mu.Unlock()
+
+	assert.Eventually(t, func() bool {
+		ok, err := store.Exists(ctx, "expired")
+		return err == nil && !ok
+	}, time.Second, time.Millisecond)
+
+	assert.NoError(t, engine.Stop(ctx))
+	assert.NoError(t, engine.Start(ctx))
+	assert.NoError(t, engine.Stop(ctx))
+}
+
+func TestStoreEnginePauseResumePurge(t *testing.T) {
+	ctx := context.Background()
+	clock := clocktest.New(time.Date(2026, time.July, 16, 0, 0, 0, 0, time.UTC))
+	store := NewMemoryStore()
+	engine := NewStoreEngine(
+		store,
+		WithProperties(&EngineProperties{
+			AgeLimit:      time.Hour,
+			PurgeDuration: time.Minute,
+		}),
+		WithSchedulerOptions(scheduler.WithClock(clock)),
+	)
+
+	assert.NoError(t, engine.Start(ctx))
+	defer engine.Stop(ctx)
+	<-clock.TimerAdded()
+
+	assert.NoError(t, store.Set(ctx, "expired", []byte("data")))
+	store.mu.Lock()
+	entry := store.Data["expired"]
+	entry.LastTouched = clock.Now().Add(-2 * time.Hour)
+	store.Data["expired"] = entry
+	store.mu.Unlock()
+
+	engine.Pause()
+	clock.Advance(time.Minute)
+	assert.True(t, mustExist(t, store, ctx, "expired"))
+
+	engine.Resume()
+	clock.Advance(time.Minute)
+	assert.Eventually(t, func() bool {
+		return !mustExist(t, store, ctx, "expired")
+	}, time.Second, time.Millisecond)
+}
+
+func mustExist(t *testing.T, store *MemoryStore, ctx context.Context, id string) bool {
+	t.Helper()
+	ok, err := store.Exists(ctx, id)
+	assert.NoError(t, err)
+	return ok
 }
 
 func TestStoreEngineWithPropertiesMerge(t *testing.T) {

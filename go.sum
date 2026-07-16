@@ -1,5 +1,9 @@
+github.com/candango/intervalok v0.0.2 h1:klpPT456/tSvFGuifpkjujzvcWHrMYv+Zj24cbBnrVc=
+github.com/candango/intervalok v0.0.2/go.mod h1:aFlAztP9WqssMbfX0JOXXhJ7GIXQ0YosbhVKVTaaHg8=
 github.com/candango/iook v0.0.3 h1:/SyPl/DVLeYDzNZf1KdReWYO5VaJFvso9XhJWO1davc=
 github.com/candango/iook v0.0.3/go.mod h1:ONj89fOgo8VMOqUfPcsy+7u6mz/XAjIlRgisPNpA/C8=
+github.com/candango/schedulerok v0.2.0 h1:2FwK9/XDva1B+WEpnQ09rNyIImlXHsic5s/bZJ30lZc=
+github.com/candango/schedulerok v0.2.0/go.mod h1:DzdJc4IFjyZaPmLvC+4vGSlNAwjyCBA05+UwNT+eT+I=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-kit/log v0.2.1 h1:MRVx0/zhvdseW+Gza6N9rVzU/IVzaeE1SFI4raAhmBU=
