@@ -62,6 +62,48 @@ func TestDecodeSignedValueAcceptsTornadoVectors(t *testing.T) {
 	}
 }
 
+func TestSignedValueKeyRotation(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	oldValue := CreateSignedValueWithKeyVersion(
+		[]byte("old-secret"), 1, "sid", "session-123", now,
+	)
+	newValue := CreateSignedValueWithKeyVersion(
+		[]byte("new-secret"), 2, "sid", "session-123", now,
+	)
+	keys := map[int][]byte{
+		1: []byte("old-secret"),
+		2: []byte("new-secret"),
+	}
+
+	for name, signedValue := range map[string]string{
+		"old key": oldValue,
+		"new key": newValue,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, ok := DecodeSignedValueWithKeys(
+				keys, "sid", signedValue, 24*time.Hour, now.Add(time.Second),
+			)
+			if !ok {
+				t.Fatal("decoder rejected a value signed by a configured key")
+			}
+			if got != "session-123" {
+				t.Fatalf("decoded value = %q, want %q", got, "session-123")
+			}
+		})
+	}
+
+	_, ok := DecodeSignedValueWithKeys(
+		map[int][]byte{2: []byte("new-secret")},
+		"sid",
+		oldValue,
+		24*time.Hour,
+		now.Add(time.Second),
+	)
+	if ok {
+		t.Fatal("decoder accepted a value signed by an unknown key")
+	}
+}
+
 func TestDecodeSignedValueRejectsTamperedAndExpiredValues(t *testing.T) {
 	const value = "2|1:0|10:1700000000|3:sid|16:c2Vzc2lvbi0xMjM=|c0913863879591acc16bae28252f735d90e064d5f45001585bfdde608b533d7c"
 

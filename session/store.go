@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/candango/httpok/logger"
@@ -95,6 +96,11 @@ func NewStoreEngine(store Store, opts ...storeEngineOptions) *StoreEngine {
 			Name:          DefaultName,
 			Prefix:        DefaultPrefix,
 			PurgeDuration: 2 * time.Minute,
+			CookieMaxAge:  31 * 24 * time.Hour,
+			CookieOptions: &CookieOptions{
+				HTTPOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			},
 		},
 		Store:  store,
 		logger: &logger.StandardLogger{},
@@ -115,6 +121,14 @@ func WithLogger(l logger.Logger) storeEngineOptions {
 	return func(e *StoreEngine) {
 		e.logger = l
 	}
+}
+
+func cloneCookieSecrets(secrets map[int][]byte) map[int][]byte {
+	clone := make(map[int][]byte, len(secrets))
+	for version, secret := range secrets {
+		clone[version] = append([]byte(nil), secret...)
+	}
+	return clone
 }
 
 func WithProperties(p *EngineProperties) storeEngineOptions {
@@ -139,6 +153,23 @@ func WithProperties(p *EngineProperties) storeEngineOptions {
 		}
 		if p.PurgeDuration != 0 {
 			e.Properties().PurgeDuration = p.PurgeDuration
+		}
+		if len(p.CookieSecret) != 0 {
+			e.Properties().CookieSecret = append([]byte(nil), p.CookieSecret...)
+		}
+		if len(p.CookieSecrets) != 0 {
+			e.Properties().CookieSecrets = cloneCookieSecrets(p.CookieSecrets)
+		}
+		if p.CookieKeyVersion != nil {
+			version := *p.CookieKeyVersion
+			e.Properties().CookieKeyVersion = &version
+		}
+		if p.CookieOptions != nil {
+			options := *p.CookieOptions
+			e.Properties().CookieOptions = &options
+		}
+		if p.CookieMaxAge != 0 {
+			e.Properties().CookieMaxAge = p.CookieMaxAge
 		}
 	}
 }

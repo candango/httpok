@@ -47,6 +47,9 @@ func TestSessionedSignsAndVerifiesSessionCookies(t *testing.T) {
 	firstCookies := firstResponse.Result().Cookies()
 	if assert.Len(t, firstCookies, 1) {
 		firstCookie := firstCookies[0]
+		assert.True(t, firstCookie.HttpOnly)
+		assert.False(t, firstCookie.Secure)
+		assert.Equal(t, http.SameSiteLaxMode, firstCookie.SameSite)
 		firstID, ok := security.DecodeSignedValue(
 			[]byte("secret"),
 			"sid",
@@ -83,6 +86,54 @@ func TestSessionedSignsAndVerifiesSessionCookies(t *testing.T) {
 			assert.NotEqual(t, firstID, tamperedID)
 		}
 	}
+}
+
+func TestSessionCookieOptionsAndKeyRotation(t *testing.T) {
+	activeVersion := 2
+	engine := session.NewStoreEngine(
+		session.NewMemoryStore(),
+		session.WithProperties(&session.EngineProperties{
+			CookieSecrets: map[int][]byte{
+				1: []byte("old-secret"),
+				2: []byte("new-secret"),
+			},
+			CookieKeyVersion: &activeVersion,
+			CookieOptions: &session.CookieOptions{
+				HTTPOnly: true,
+				Secure:   true,
+				SameSite: http.SameSiteStrictMode,
+			},
+		}),
+	)
+
+	cookie := sessionCookie(engine, "session-id")
+	assert.True(t, cookie.HttpOnly)
+	assert.True(t, cookie.Secure)
+	assert.Equal(t, http.SameSiteStrictMode, cookie.SameSite)
+
+	id, ok := security.DecodeSignedValueWithKeys(
+		map[int][]byte{
+			1: []byte("old-secret"),
+			2: []byte("new-secret"),
+		},
+		"HTTPOKSESSID",
+		cookie.Value,
+		31*24*time.Hour,
+		time.Now(),
+	)
+	assert.True(t, ok)
+	assert.Equal(t, "session-id", id)
+
+	oldCookie := security.CreateSignedValueWithKeyVersion(
+		[]byte("old-secret"),
+		1,
+		"HTTPOKSESSID",
+		"session-id",
+		time.Now(),
+	)
+	id, ok = sessionIDFromCookie(engine, oldCookie)
+	assert.True(t, ok)
+	assert.Equal(t, "session-id", id)
 }
 
 func TestSessionMiddlewareServer(t *testing.T) {

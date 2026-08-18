@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/candango/httpok/logger"
@@ -92,8 +93,22 @@ type EngineProperties struct {
 	logger.Logger
 	Name string
 	// TODO: Add this to the interface
-	Prefix        string
-	PurgeDuration time.Duration
+	Prefix           string
+	PurgeDuration    time.Duration
+	CookieSecret     []byte
+	CookieSecrets    map[int][]byte
+	CookieMaxAge     time.Duration
+	CookieKeyVersion *int
+	CookieOptions    *CookieOptions
+}
+
+// CookieOptions controls the transport attributes applied to session cookies.
+// The default options use HttpOnly and SameSite=Lax. Secure remains opt-in so
+// applications can run over plain HTTP during local development.
+type CookieOptions struct {
+	HTTPOnly bool
+	Secure   bool
+	SameSite http.SameSite
 }
 
 // Encoder is an interface for encoding and decoding session data.

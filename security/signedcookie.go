@@ -18,14 +18,27 @@ const (
 	maxCookieFuture = 31 * 24 * time.Hour
 )
 
-// CreateSignedValue creates a version 2 signed value based on Tornado's
-// secure-cookie format.
+// CreateSignedValue creates a version 2 signed value using key version 0.
+//
+// It preserves the original API for applications that use one cookie secret.
+// Use CreateSignedValueWithKeyVersion when key rotation is configured.
+func CreateSignedValue(
+	secret []byte,
+	name, value string,
+	now time.Time,
+) string {
+	return CreateSignedValueWithKeyVersion(secret, 0, name, value, now)
+}
+
+// CreateSignedValueWithKeyVersion creates a Tornado-compatible version 2
+// signed value using keyVersion.
 //
 // The value contains the session value encoded with standard base64 and is
 // authenticated with HMAC-SHA256. The timestamp is taken from now, which also
 // makes the function deterministic for callers that need test vectors.
-func CreateSignedValue(
+func CreateSignedValueWithKeyVersion(
 	secret []byte,
+	keyVersion int,
 	name, value string,
 	now time.Time,
 ) string {
@@ -33,7 +46,7 @@ func CreateSignedValue(
 	encodedValue := base64.StdEncoding.EncodeToString([]byte(value))
 	toSign := strings.Join([]string{
 		signedCookieV2,
-		formatTornadoField("0"),
+		formatTornadoField(strconv.Itoa(keyVersion)),
 		formatTornadoField(timestamp),
 		formatTornadoField(name),
 		formatTornadoField(encodedValue),
@@ -44,30 +57,46 @@ func CreateSignedValue(
 	return toSign + hex.EncodeToString(signature)
 }
 
-// DecodeSignedValue verifies a signed value based on Tornado's secure-cookie
-// format. Both version 1 (HMAC-SHA1) and version 2 (HMAC-SHA256) values are
-// accepted for backwards compatibility.
+// DecodeSignedValue verifies a signed value using key version 0.
 //
-// It returns false when the secret, signature, cookie name, encoding, or
-// timestamp is invalid, or when the value is older than maxAge.
+// It preserves the original API for applications that use one cookie secret.
+// Use DecodeSignedValueWithKeys when key rotation is configured.
 func DecodeSignedValue(
 	secret []byte,
 	name, signedValue string,
 	maxAge time.Duration,
 	now time.Time,
 ) (string, bool) {
-	if len(secret) == 0 || signedValue == "" {
+	return DecodeSignedValueWithKeys(
+		map[int][]byte{0: secret}, name, signedValue, maxAge, now,
+	)
+}
+
+// DecodeSignedValueWithKeys verifies a signed value against configured keys.
+// Version 2 values select their key by the embedded key version. Legacy
+// version 1 values are checked against every configured key because v1 has no
+// key-version field.
+func DecodeSignedValueWithKeys(
+	keys map[int][]byte,
+	name, signedValue string,
+	maxAge time.Duration,
+	now time.Time,
+) (string, bool) {
+	if len(keys) == 0 || signedValue == "" {
 		return "", false
 	}
 
 	switch signedValueVersion(signedValue) {
 	case 1:
-		return decodeTornadoV1(secret, name, signedValue, maxAge, now)
+		for _, secret := range keys {
+			if value, ok := decodeTornadoV1(secret, name, signedValue, maxAge, now); ok {
+				return value, true
+			}
+		}
 	case 2:
-		return decodeTornadoV2(secret, name, signedValue, maxAge, now)
-	default:
-		return "", false
+		return decodeTornadoV2(keys, name, signedValue, maxAge, now)
 	}
+	return "", false
 }
 
 func signedValueVersion(value string) int {
@@ -90,7 +119,7 @@ func tornadoHMAC(newHash func() hash.Hash, secret []byte, value string) []byte {
 }
 
 func decodeTornadoV2(
-	secret []byte,
+	keys map[int][]byte,
 	name, signedValue string,
 	maxAge time.Duration,
 	now time.Time,
@@ -100,8 +129,16 @@ func decodeTornadoV2(
 		return "", false
 	}
 
-	keyVersion, ok := parseTornadoField(parts[1])
-	if !ok || keyVersion != "0" {
+	keyVersionField, ok := parseTornadoField(parts[1])
+	if !ok {
+		return "", false
+	}
+	keyVersion, err := strconv.Atoi(keyVersionField)
+	if err != nil || keyVersion < 0 {
+		return "", false
+	}
+	secret, ok := keys[keyVersion]
+	if !ok || len(secret) == 0 {
 		return "", false
 	}
 	timestamp, ok := parseTornadoField(parts[2])
