@@ -74,6 +74,7 @@ func TestFileSessionStore(t *testing.T) {
 
 		err = store.Delete(ctx, "del")
 		assert.NoError(t, err)
+		assert.NoError(t, store.Delete(ctx, "del"))
 
 		ok, _ := store.Exists(ctx, "del")
 		assert.False(t, ok)
@@ -86,9 +87,13 @@ func TestFileSessionStore(t *testing.T) {
 
 		store.Set(ctx, "old", []byte("expired"))
 		store.Set(ctx, "fresh", []byte("valid"))
+		unrelatedFile := filepath.Join(store.Dir, "unrelated.txt")
+		assert.NoError(t, os.WriteFile(unrelatedFile, []byte("keep"), 0600))
+		legacyFile := filepath.Join(store.Dir, "legacy.sess")
+		assert.NoError(t, os.WriteFile(legacyFile, []byte("keep"), 0600))
 
 		// Make "old" file appear old by setting its mtime to 2 hours ago
-		oldFile := filepath.Join(store.Dir, "old.sess")
+		oldFile := filepath.Join(store.Dir, defaultFileStorePrefix+"old"+fileStoreSuffix)
 		oldTime := time.Now().Add(-2 * time.Hour)
 		os.Chtimes(oldFile, oldTime, oldTime)
 
@@ -100,6 +105,8 @@ func TestFileSessionStore(t *testing.T) {
 
 		ok, _ = store.Exists(ctx, "fresh")
 		assert.True(t, ok)
+		assert.FileExists(t, unrelatedFile)
+		assert.FileExists(t, legacyFile)
 	})
 
 	t.Run("should fail to get non-existent session", func(t *testing.T) {
@@ -120,7 +127,7 @@ func TestFileSessionStore(t *testing.T) {
 		store.Set(ctx, "session", []byte("data"))
 
 		// Make file appear old
-		sessFile := filepath.Join(store.Dir, "session.sess")
+		sessFile := filepath.Join(store.Dir, defaultFileStorePrefix+"session"+fileStoreSuffix)
 		oldTime := time.Now().Add(-2 * time.Hour)
 		os.Chtimes(sessFile, oldTime, oldTime)
 
@@ -138,6 +145,59 @@ func TestFileSessionStore(t *testing.T) {
 		// Touch non-existent should error
 		err = store.Touch(ctx, "nope")
 		assert.Error(t, err)
+	})
+
+	t.Run("should namespace files and reject unsafe IDs", func(t *testing.T) {
+		store := NewFileStore()
+		store.Prefix = "tenant_"
+		defer os.RemoveAll(store.Dir)
+		assert.NoError(t, store.Start(ctx))
+
+		assert.NoError(t, store.Set(ctx, "safe-id", []byte("data")))
+		assert.FileExists(t, filepath.Join(store.Dir, "tenant_safe-id.sess"))
+		oldFile := filepath.Join(store.Dir, "tenant_old.sess")
+		assert.NoError(t, store.Set(ctx, "old", []byte("expired")))
+		oldTime := time.Now().Add(-2 * time.Hour)
+		assert.NoError(t, os.Chtimes(oldFile, oldTime, oldTime))
+		assert.NoError(t, store.Purge(ctx, time.Hour))
+		assert.NoFileExists(t, oldFile)
+		assert.NoFileExists(t, filepath.Join(store.Dir, "httpok_safe-id.sess"))
+		assert.NoFileExists(t, filepath.Join(store.Dir, "safe-id.sess"))
+
+		assert.NoError(t, os.Mkdir(filepath.Join(store.Dir, "httpok_directory.sess"), 0700))
+		exists, err := store.Exists(ctx, "directory")
+		assert.NoError(t, err)
+		assert.False(t, exists)
+
+		for _, id := range []string{
+			"../escape",
+			"..",
+			".",
+			"nested/id",
+			"absolute/path",
+			"contains.dot",
+			`contains\\slash`,
+		} {
+			t.Run(id, func(t *testing.T) {
+				assert.Error(t, store.Set(ctx, id, []byte("blocked")))
+				assert.Error(t, store.Delete(ctx, id))
+				assert.Error(t, store.Touch(ctx, id))
+				_, getErr := store.Get(ctx, id)
+				assert.Error(t, getErr)
+				_, existsErr := store.Exists(ctx, id)
+				assert.Error(t, existsErr)
+			})
+		}
+
+		outside := filepath.Join(store.Dir, "..", "escape.sess")
+		assert.NoFileExists(t, outside)
+	})
+
+	t.Run("should reject unsafe file prefixes", func(t *testing.T) {
+		store := NewFileStore()
+		store.Prefix = "../escape"
+		defer os.RemoveAll(store.Dir)
+		assert.Error(t, store.Start(ctx))
 	})
 
 	t.Run("should handle concurrent access safely", func(t *testing.T) {

@@ -20,6 +20,20 @@ non-zero settings.
 | `Enabled` | Enables the engine | true |
 | `Encoder` | Session data encoder | JSON |
 
+## FileStore filename prefix
+
+`FileStore.Prefix` controls the physical filename namespace and defaults to
+`httpok_`. It is independent from the cookie name and from the logical key
+prefix used by key-value backends.
+
+```go
+store := session.NewFileStore()
+store.Prefix = "tenant_"
+```
+
+The prefix is validated and may contain only ASCII letters, digits, `-`, and
+`_`.
+
 ## Signed cookies and key rotation
 
 A single-key configuration is backward compatible:

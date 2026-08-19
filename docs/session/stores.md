@@ -32,13 +32,14 @@ It does not provide cross-process persistence.
 for sliding expiration. The store uses a per-instance mutex for file access and
 runs scheduled purge through the engine.
 
-The FileStore hardening work is tracked by task #32. The target boundary is:
+The FileStore hardening implemented for task #32 provides:
 
-- fixed session filename namespace;
-- strict allowlist for session IDs;
+- a configurable filename prefix, defaulting to `httpok_`;
+- a strict allowlist for session IDs;
 - regular-file checks;
 - purge limited to namespaced session files;
-- idempotent deletion.
+- idempotent deletion;
+- private `0700` storage directories and `0600` session files.
 
 Do not use a raw user-controlled string as a filename.
 

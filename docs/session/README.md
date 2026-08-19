@@ -67,6 +67,6 @@ if err := sess.Set("user_id", userID); err != nil {
 - Signed Tornado-compatible cookies: implemented.
 - Cookie attributes and key rotation: implemented in the current worktree.
 - Changed-session persistence and destruction: tracked by task #30.
-- FileStore filename isolation and ID validation: tracked by task #32.
+- FileStore filename isolation and ID validation: implemented for task #32.
 - Cross-stack Tornado/Go tests: tracked by task #31.
 - Full CSRF token protection: not implemented by the session package.
