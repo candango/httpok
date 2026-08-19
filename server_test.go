@@ -134,6 +134,57 @@ func TestGracefulServerSignalCancelsRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestGracefulServerShutdownFuncTakesPrecedence(t *testing.T) {
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+	addr := fmt.Sprintf(":%d", port)
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: http.NewServeMux(),
+	}
+
+	called := make(chan string)
+	gs := NewGracefulServer(srv, "test-server").
+		WithCancelFunc(func(ctx context.Context) error {
+			called <- "cancel"
+			return nil
+		}).
+		WithShutdownFunc(func(ctx context.Context) error {
+			if ctx == nil {
+				t.Error("expected shutdown context")
+			}
+			called <- "shutdown"
+			return nil
+		})
+
+	done := make(chan struct{})
+	go func() {
+		gs.Run()
+		close(done)
+	}()
+
+	waitForPortInUse(t, port, true)
+
+	err = gs.TriggerShutdown()
+	assert.NoError(t, err)
+
+	select {
+	case name := <-called:
+		assert.Equal(t, "shutdown", name)
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected shutdown function to be called")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected server shutdown to finish")
+	}
+}
+
 func TestGracefulServerStartLifecycleHooks(t *testing.T) {
 	port, err := getFreePort()
 	if err != nil {

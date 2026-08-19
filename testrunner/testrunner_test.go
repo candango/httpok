@@ -178,6 +178,8 @@ func processJsonRequest(req *http.Request, a any) (statusCode int) {
 	return 200
 }
 
+// TODO: Document the fluent interface used by the test runner, where With*
+// methods configure and return the same runner before a terminal HTTP method.
 func TestWithHandler(t *testing.T) {
 	runner := NewHttpTestRunner(t).WithHandler(NewTargetHandler())
 

@@ -34,10 +34,16 @@ func newSignalChan(sig ...os.Signal) chan os.Signal {
 	return c
 }
 
-// GracefulCancelFunc defines a user-provided function called during graceful
+// GracefulShutdownFunc defines a user-provided function called during graceful
 // shutdown for custom cleanup. The provided context is scoped to the shutdown
 // phase and may include the configured shutdown timeout.
-type GracefulCancelFunc func(context.Context) error
+type GracefulShutdownFunc func(context.Context) error
+
+// GracefulCancelFunc defines a user-provided function called during graceful
+// shutdown for custom cleanup.
+//
+// Deprecated: use GracefulShutdownFunc instead.
+type GracefulCancelFunc = GracefulShutdownFunc
 
 // GracefulAfterStartFunc defines a user-provided function called after the
 // server start workflow has been triggered. The provided context is the server
@@ -62,9 +68,15 @@ type GracefulServer struct {
 	cancel          context.CancelFunc
 	AfterStartFunc  GracefulAfterStartFunc
 	BeforeStartFunc GracefulBeforeStartFunc
-	CancelFunc      GracefulCancelFunc
-	cancelMutex     sync.Mutex
-	sigChan         chan os.Signal
+	// CancelFunc is the deprecated name for the graceful shutdown hook.
+	//
+	// Deprecated: use ShutdownFunc instead.
+	CancelFunc GracefulCancelFunc
+	// ShutdownFunc runs during graceful shutdown before http.Server.Shutdown.
+	// It takes precedence over CancelFunc when both fields are configured.
+	ShutdownFunc GracefulShutdownFunc
+	cancelMutex  sync.Mutex
+	sigChan      chan os.Signal
 }
 
 // NewGracefulServer creates a new GracefulServer wrapping the given http.Server.
@@ -105,8 +117,19 @@ func (s *GracefulServer) WithBeforeStartFunc(beforeStartFunc GracefulBeforeStart
 // WithCancelFunc sets a custom cleanup function called during graceful
 // shutdown before the HTTP server is shut down. The function receives the
 // shutdown context, not the runtime context.
+//
+// Deprecated: use WithShutdownFunc instead.
 func (s *GracefulServer) WithCancelFunc(cancelFunc GracefulCancelFunc) *GracefulServer {
 	s.CancelFunc = cancelFunc
+	return s
+}
+
+// WithShutdownFunc sets a custom cleanup function called during graceful
+// shutdown before the HTTP server is shut down. The function receives the
+// shutdown context, not the runtime context. ShutdownFunc takes precedence
+// over the deprecated CancelFunc when both are configured.
+func (s *GracefulServer) WithShutdownFunc(shutdownFunc GracefulShutdownFunc) *GracefulServer {
+	s.ShutdownFunc = shutdownFunc
 	return s
 }
 
@@ -126,9 +149,8 @@ func (s *GracefulServer) TriggerShutdown() error {
 // Run starts the HTTP server in a goroutine and listens for termination
 // signals to gracefully shut down.
 // It cancels the server runtime context when shutdown is triggered, then runs
-// the custom cancel function and HTTP shutdown using a separate shutdown
-// context. If ShutdownTimeout is set, that timeout applies to the shutdown
-// context.
+// the custom shutdown hook and HTTP shutdown using a separate shutdown context.
+// If ShutdownTimeout is set, that timeout applies to the shutdown context.
 // It takes optional signals to listen for; if none are provided, it uses
 // default signals.
 func (s *GracefulServer) Run(sig ...os.Signal) {
@@ -188,9 +210,13 @@ func (s *GracefulServer) Run(sig ...os.Signal) {
 			close(done)
 		}()
 
-		if s.CancelFunc != nil {
-			if err := s.CancelFunc(shutdownCtx); err != nil {
-				l.Fatalf("server %s cancellation function failed: %v", s.Name, err)
+		shutdownFunc := s.ShutdownFunc
+		if shutdownFunc == nil {
+			shutdownFunc = s.CancelFunc
+		}
+		if shutdownFunc != nil {
+			if err := shutdownFunc(shutdownCtx); err != nil {
+				l.Fatalf("server %s shutdown function failed: %v", s.Name, err)
 			}
 		}
 

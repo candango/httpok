@@ -8,7 +8,10 @@ import (
 	"github.com/candango/httpok/logger"
 )
 
-// Logging creates a logging middleware with a custom logger
+// Logging creates a logging middleware with a custom logger.
+//
+// It records the request method, path, response status, and elapsed time. A
+// nil logger uses the standard logger.
 func Logging(log logger.Logger) func(http.Handler) http.Handler {
 	if log == nil {
 		log = &logger.StandardLogger{}
