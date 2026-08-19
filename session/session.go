@@ -48,12 +48,17 @@ type Engine interface {
 	// SessionExists checks if a session with the given ID exists.
 	SessionExists(ctx context.Context, id string) (bool, error)
 
-	// SaveSession persists the session data for the given ID.
+	// SaveSession persists changed session data for the given ID.
 	// The underlying Store.Set() implementation MUST implicitly touch the
 	// session (expiration/TTL) as part of the SET operation. If your Store
 	// implementation does not refresh TTL on Set, you haven't read the Store
 	// interface contract.
 	SaveSession(ctx context.Context, id string, s Session) error
+
+	// DeleteSession invalidates the server-side session immediately. A store may
+	// remove the physical data synchronously or use a backend-specific tombstone
+	// and deferred cleanup, but subsequent reads must not return the session.
+	DeleteSession(ctx context.Context, id string) error
 }
 
 // IdGenerator defines an interface for generating unique session IDs.

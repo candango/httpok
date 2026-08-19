@@ -147,6 +147,15 @@ func Sessioned(e session.Engine) func(http.Handler) http.Handler {
 			}
 			ctxSess := context.WithValue(ctxEngine, session.ContextSessValue, &s)
 			next.ServeHTTP(w, r.WithContext(ctxSess))
+			if s.Destroyed {
+				if err := e.DeleteSession(ctxEngine, s.Id); err != nil {
+					log.Printf("failed to delete session %s: %v", s.Id, err)
+				}
+				return
+			}
+			if !s.Changed {
+				return
+			}
 			if err := e.SaveSession(ctxEngine, s.Id, s); err != nil {
 				log.Printf("failed to save session %s: %v", s.Id, err)
 			}

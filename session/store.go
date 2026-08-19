@@ -343,3 +343,16 @@ func (e *StoreEngine) SaveSession(ctx context.Context, id string, session Sessio
 	}
 	return e.Store.Set(ctx, id, data)
 }
+
+// DeleteSession invalidates the server-side session immediately. The store
+// decides whether physical cleanup is synchronous or deferred.
+func (e *StoreEngine) DeleteSession(ctx context.Context, id string) error {
+	pFalse := false
+	if e.properties.Enabled == nil || e.properties.Enabled == &pFalse {
+		return errors.New("engine is disabled")
+	}
+	if id == "" {
+		return errors.New("session id is empty")
+	}
+	return e.Store.Delete(ctx, id)
+}

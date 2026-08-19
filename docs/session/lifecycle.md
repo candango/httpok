@@ -48,20 +48,31 @@ Changed=true,  Destroyed=false -> encode and persist session data
 Destroyed=true                 -> delete the server-side session
 ```
 
-The changed-session persistence and destruction work is tracked by task #30.
-Until that task is complete, callers must treat persistence behavior as an
-active implementation boundary rather than depending on write suppression.
+The changed-session persistence and destruction behavior is implemented by
+task #30. Custom `Engine` implementations must provide the same
+`DeleteSession` invalidation guarantee.
 
 ## Destruction
 
 `Destroy` clears data and marks the session destroyed. The target lifecycle is:
 
 ```text
-Destroy -> delete from Store -> old cookie becomes unknown -> next request gets a new ID
+Destroy -> DeleteSession -> old cookie becomes unknown -> next request gets a new ID
 ```
 
+`DeleteSession` is a logical invalidation contract. It must make subsequent
+session reads fail immediately. The backend may remove data synchronously or
+store a short-lived tombstone and defer physical cleanup to its scheduler.
+
+This keeps revocation semantics independent from backend cleanup cost:
+
+- MemoryStore and FileStore can remove data immediately;
+- remote stores can use native deletion, revocation state, or a tombstone with
+  TTL;
+- scheduled purge may remove tombstones and other physical leftovers later.
+
 A response that has already written its headers cannot reliably add a replacement
-cookie after the handler returns. The server-side deletion is therefore the
+cookie after the handler returns. Server-side invalidation is therefore the
 security boundary; the next request renews the client identifier.
 
 ## Expiration

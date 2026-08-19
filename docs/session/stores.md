@@ -13,7 +13,7 @@ operations to a store implementation.
 | `Get` / `GetString` | Read stored data |
 | `Set` / `SetString` | Write data and refresh TTL |
 | `Touch` | Refresh TTL without changing data |
-| `Delete` | Remove one session; should be idempotent |
+| `Delete` | Invalidate one session immediately; physical cleanup may be deferred |
 | `Purge` | Remove expired entries |
 | `RequiresPurge` | Tell the engine whether scheduled purge is needed |
 
