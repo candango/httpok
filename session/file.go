@@ -9,11 +9,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/candango/iook/pathx"
 )
 
 const (
 	defaultFileStorePrefix = "httpok_"
-	fileStoreSuffix         = ".sess"
+	fileStoreSuffix        = ".sess"
 )
 
 var errInvalidSessionID = errors.New("invalid session id")
@@ -91,12 +93,12 @@ func (s *FileStore) Exists(_ context.Context, id string) (bool, error) {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	info, err := os.Lstat(sessFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
+	info, exists, err := pathx.Lstat(sessFile)
 	if err != nil {
 		return false, err
+	}
+	if !exists {
+		return false, nil
 	}
 	return info.Mode().IsRegular(), nil
 }
@@ -110,14 +112,11 @@ func (s *FileStore) Get(_ context.Context, id string) ([]byte, error) {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	info, err := os.Lstat(sessFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, errors.New("session not found")
-	}
+	info, exists, err := pathx.Lstat(sessFile)
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() {
+	if !exists || !info.Mode().IsRegular() {
 		return nil, errors.New("session not found")
 	}
 	return os.ReadFile(sessFile)
@@ -142,10 +141,12 @@ func (s *FileStore) Set(_ context.Context, id string, val []byte) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if info, err := os.Lstat(sessFile); err == nil && !info.Mode().IsRegular() {
-		return errors.New("session path is not a regular file")
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	info, exists, err := pathx.Lstat(sessFile)
+	if err != nil {
 		return err
+	}
+	if exists && !info.Mode().IsRegular() {
+		return errors.New("session path is not a regular file")
 	}
 	file, err := os.OpenFile(sessFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
@@ -172,11 +173,11 @@ func (s *FileStore) Read(id string, _ any) ([]byte, error) {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	info, err := os.Lstat(sessFile)
+	info, exists, err := pathx.Lstat(sessFile)
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() {
+	if !exists || !info.Mode().IsRegular() {
 		return nil, errors.New("session not found")
 	}
 	return os.ReadFile(sessFile)
@@ -234,14 +235,11 @@ func (s *FileStore) Touch(_ context.Context, id string) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	info, err := os.Lstat(sessFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return errors.New("session not found")
-	}
+	info, exists, err := pathx.Lstat(sessFile)
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() {
+	if !exists || !info.Mode().IsRegular() {
 		return errors.New("session not found")
 	}
 	now := time.Now()
