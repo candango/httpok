@@ -33,14 +33,23 @@ Tests should cover:
 
 ## Cross-stack E2E
 
-Task #31 covers Python/Tornado and Go interoperability. The test should:
+Task #31 covers Python/Tornado and Go interoperability. The integration test
+in `middleware/session_crossstack_test.go`:
 
-1. start a Go test server on loopback and an ephemeral port;
-2. seed a known server-side session;
-3. send Python/Tornado v1 and v2 cookies to Go;
-4. decode a Go-generated v2 cookie with Tornado;
-5. exercise tampering, expiration, unknown IDs, and lifecycle behavior;
-6. clean up the process and temporary storage on every result.
+1. starts a Go test server on loopback and an ephemeral port;
+2. seeds a known server-side session;
+3. generates Python/Tornado v1 and v2 cookies and sends them to Go;
+4. decodes a Go-generated v2 cookie with Tornado;
+5. exercises tampering, expiration, and unknown IDs;
+6. cleans up the server and session engine on every result.
 
-Secrets used by the test must be fixed test-only values and must never be
-reused in deployments.
+The helper uses the pinned dependency in `testdata/requirements.txt`. Run the
+cross-stack test directly with:
+
+```bash
+python3 -m pip install --requirement testdata/requirements.txt
+go test ./middleware -run 'TestTornado'
+```
+
+Secrets used by the test are fixed test-only values and must never be reused
+in deployments.
